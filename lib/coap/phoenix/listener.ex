@@ -10,10 +10,6 @@ defmodule CoAP.Phoenix.Listener do
 
   # TODO: spec for this
   def init([endpoint, config] = _opts) do
-    # otp_app = Module.get_attribute(endpoint, :otp_app)
-    # config = Phoenix.Endpoint.Supervisor.config(otp_app, endpoint)
-    # IO.inspect(config)
-
     # TODO: fetch info to start coap udp from config
     # TODO: build state from coap udp socket, start listening, ALA listener in
     {:ok, _socket} = :gen_udp.open(config[:local_port], [:binary])
@@ -35,4 +31,12 @@ defmodule CoAP.Phoenix.Listener do
 
     # TODO: ack immediately on con, then send a con later with the same message_id and token?
   end
+
+  # TODO: merge with defaults
+  # defp config_for(endpoint) do
+  #   :otp_app
+  #   |> endpoint.config()
+  #   |> Phoenix.Endpoint.Supervisor.config(endpoint)
+  #   |> Keyword.get(:coap, [])
+  # end
 end
