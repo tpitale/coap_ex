@@ -1,0 +1,2 @@
+defmodule CoAP do
+end
