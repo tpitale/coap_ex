@@ -53,14 +53,14 @@ defmodule CoAP.Phoenix.Request do
         socket: "socket"
       }
   """
-  def build(%Message{options: options} = message, socket, address, port) do
+  def build(%Message{options: options} = message, socket, address, port, config) do
     ip_string = Enum.join(Tuple.to_list(address), ".")
 
     # TODO: defstruct?
     %{
       method: message |> method,
       path: options["Uri-Path"],
-      host: options["Uri-Host"],
+      host: options["Uri-Host"] || config[:host],
       port: port,
       qs: options["Uri-Query"],
       headers: options,

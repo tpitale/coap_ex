@@ -1,4 +1,6 @@
 defmodule CoAP.Message do
+  import Logger, only: [info: 1]
+
   # +--------+------------------+-----------+
   # | Number | Name             | Reference |
   # +--------+------------------+-----------+
@@ -195,7 +197,7 @@ defmodule CoAP.Message do
   defp decode_options(options_binary, options_acc, options_delta_sum) do
     {new_delta_sum, option_name, option_value, options_binary_rest} = decode_option(options_binary, options_delta_sum)
 
-    # info("#{inspect({new_delta_sum, option_name, option_value, options_binary_rest})}")
+    info("#{inspect({new_delta_sum, option_name, option_value, options_binary_rest})}")
 
     new_acc = Map.put(options_acc, option_name, option_value)
 

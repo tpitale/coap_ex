@@ -27,14 +27,16 @@ In phoenix `mix.exs`:
 
 ```
 config :my_app, MyApp.Coap.Endpoint,
-  url: [host: "localhost", port: 5683], # change to default coap port
-  adapter: CoAP.Adapter
+  http: false, https: false, server: false,
+  coap: [port: 5683]
+
 ```
 
 In `lib/my_app.ex` add supervisor for the endpoint:
 
 ```
-supervisor(MyApp.Coap.Endpoint, [])
+MyApp.Coap.Endpoint,
+{CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]}
 ```
 
 Make a new router and endpoint:
@@ -54,6 +56,7 @@ end
 
 # TODO:
 
+* [ ] handle multiple parts for some headers, like "Uri-Path"
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
 * [ ] coap client, ala httpoison

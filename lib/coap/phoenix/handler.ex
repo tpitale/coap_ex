@@ -10,6 +10,8 @@ defmodule CoAP.Phoenix.Handler do
   def init(req, {endpoint, opts}) do
     %{path_info: path_info} = conn = @connection.conn(req)
 
+    IO.inspect(conn)
+
     try do
       case endpoint.__dispatch__(path_info, opts) do
         {:plug, handler, opts} ->
