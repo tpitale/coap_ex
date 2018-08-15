@@ -21,7 +21,8 @@ defmodule Coap.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:plug, "~> 1.0"}
+      {:plug, "~> 1.0"},
+      {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]}
     ]
   end
 end
