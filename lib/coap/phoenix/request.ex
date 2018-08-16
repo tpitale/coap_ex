@@ -16,10 +16,10 @@ defmodule CoAP.Phoenix.Request do
   # code_class => 0
   # code_detail => @methods
   @methods %{
-    {0, 1} => :get,
-    {0, 2} => :post,
-    {0, 3} => :put,
-    {0, 4} => :delete
+    {0,01} => :get,
+    {0,02} => :post,
+    {0,03} => :put,
+    {0,04} => :delete
   }
 
   @doc """
@@ -34,35 +34,35 @@ defmodule CoAP.Phoenix.Request do
       iex>   code_detail: 3,
       iex>   message_id: 12796,
       iex>   token: <<123, 92, 211, 222>>,
-      iex>   options: %{"Uri-Path" => "resource", "Uri-Query" => "who=world", "Uri-Host" => "localhost"},
+      iex>   options: %{uri_path: ["api", ""], uri_query: ["who=world", "what=hello"], uri_host: "localhost"},
       iex>   payload: "payload"
       iex> }
       iex> CoAP.Phoenix.Request.build(message, "socket", {127,0,0,1}, 5683)
       %{
         headers: %{
-          "Uri-Path" => "resource",
-          "Uri-Query" => "who=world",
-          "Uri-Host" => "localhost"
+          uri_path: ["api", ""],
+          uri_query: ["who=world", "what=hello"],
+          uri_host: "localhost"
         },
         host: "localhost",
         method: :put,
-        path: "resource",
+        path: "api/",
         peer: {{127,0,0,1}, 5683},
         port: 5683,
-        qs: "who=world",
+        qs: "who=world&what=hello",
         socket: "socket"
       }
   """
-  def build(%Message{options: options} = message, socket, address, port, config) do
+  def build(%Message{options: options} = message, socket, address, port, config \\ %{}) do
     ip_string = Enum.join(Tuple.to_list(address), ".")
 
     # TODO: defstruct?
     %{
       method: message |> method,
-      path: options["Uri-Path"],
-      host: options["Uri-Host"] || config[:host],
+      path: options[:uri_path] |> Enum.join("/"),
+      host: options[:uri_host] || config[:host],
       port: port,
-      qs: options["Uri-Query"],
+      qs: options[:uri_query] |> Enum.join("&"),
       headers: options,
       peer: {address, port},
       socket: socket
