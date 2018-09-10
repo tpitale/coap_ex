@@ -1,6 +1,6 @@
 defmodule CoAP.Response do
   @response %{
-    {2, 0} => "OK",
-    {4, 4} => "Not Found"
+    {2, 00} => "OK",
+    {4, 04} => "Not Found"
   }
 end

@@ -2,9 +2,10 @@ defmodule CoAP.Message do
   @version 1
 
   defstruct version: @version,
-            type: nil,
+            type: :con,
             code_class: 0,
             code_detail: 0,
+            method: nil,
             message_id: 1,
             token: <<0x01>>,
             options: %{},
@@ -53,7 +54,7 @@ defmodule CoAP.Message do
     2 => :ack,
     3 => :reset
   }
-  # @types_map Enum.into(@types, %{}, fn {k,v} -> {v,k} end)
+  @types_map Enum.into(@types, %{}, fn {k,v} -> {v,k} end)
 
   @message_header_format (quote do
                     <<
@@ -82,7 +83,7 @@ defmodule CoAP.Message do
 
     <<
       version::unsigned-integer-size(2),
-      type::unsigned-integer-size(2),
+      encode_type(type)::unsigned-integer-size(2),
       token_length::unsigned-integer-size(4),
       code_class::unsigned-integer-size(3),
       code_detail::unsigned-integer-size(5),
@@ -94,6 +95,9 @@ defmodule CoAP.Message do
     >>
   end
 
+  defp encode_type(type) when is_atom(type), do: @types_map[type]
+  defp decode_type(type) when is_integer(type), do: @types[type]
+
   @doc """
   Decode binary coap message into a struct
 
@@ -103,7 +107,7 @@ defmodule CoAP.Message do
       iex> CoAP.Message.decode(message)
       %CoAP.Message{
         version: 1,
-        type: 0,
+        type: :con,
         code_class: 0,
         code_detail: 3,
         message_id: 12796,
@@ -121,7 +125,7 @@ defmodule CoAP.Message do
       iex> CoAP.Message.decode(message)
       %CoAP.Message{
         version: 1,
-        type: 0,
+        type: :con,
         code_class: 0,
         code_detail: 1,
         message_id: 1,
@@ -145,13 +149,25 @@ defmodule CoAP.Message do
 
     %__MODULE__{
       version: version,
-      type: type,
+      type: decode_type(type),
+      method: method_for(code_class, code_detail),
       code_class: code_class,
       code_detail: code_detail,
       message_id: message_id,
       token: token,
       options: options,
       payload: payload
+    }
+  end
+
+  defp method_for(0, code_detail), do: @types[code_detail]
+  defp method_for(_code_class, _code_detail), do: nil
+
+  def response_for(%__MODULE__{type: :con} = message) do
+    %__MODULE__{
+      type: :con,
+      message_id: message.message_id,
+      token: message.token
     }
   end
 end

@@ -1,6 +1,8 @@
 defmodule CoAP.Records do
   require Record
 
+  # TODO: remove/deprecate
+
   Record.defrecord(
     :coap_content,
     Record.extract(
