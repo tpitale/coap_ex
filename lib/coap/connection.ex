@@ -40,7 +40,7 @@ defmodule CoAP.Connection do
 
   # TODO: connection timeouts
 
-  def handle_info({:receive, data}, state) when is_binary(data) do
+  def handle_info({:receive, %Message{} = message}, state) do
     # TODO: based on the type of the message coming in
     # we have to handle it in different ways
     # 1. con -> ack|reset, handle the data
@@ -53,15 +53,15 @@ defmodule CoAP.Connection do
 
     # TODO: start timer for conn
 
-    data
-    |> Message.decode()
+    message
     |> receive_message(state)
     |> update_state_for_return(:noreply)
   end
 
   def handle_info({:deliver, %Message{} = message}, state) do
-    # deliver_message(message, state)
-    # |> update_state_for_return(:noreply)
+    message
+    |> deliver_message(state)
+    |> update_state_for_return(:noreply)
   end
 
   def handle_info(:timeout, state) do
@@ -161,27 +161,28 @@ defmodule CoAP.Connection do
   end
 
   # TIMEOUTS ===================================================================
-  defp timeout(%{phase: :awaiting_app_ack, message: message}) do
+  defp timeout(%{phase: :awaiting_app_ack, message: message} = state) do
     # send stored message
     reply(message, state)
 
     %{state | phase: :peer_ack_sent}
   end
-  defp timeout(%{phase: :awaiting_peer_ack, message: message}) do
+  defp timeout(%{phase: :awaiting_peer_ack, message: message, timer: timer, retry_timeout: timeout} = state) do
     # retry send stored message
     reply(message, state)
 
     # increase timer to X*2
-    timer = start_timer(1000)
+    timeout = timeout * 2
+    timer = restart_timer(timer, timeout)
     # until conn timeout, limit to retries?
     # -> awaiting_peer_ack
-    %{state | phase: :awaiting_peer_ack, timer: }
+    %{state | phase: :awaiting_peer_ack, timer: timer, retry_timeout: timeout}
   end
 
   # STATE TRANSITIONS ==========================================================
   defp await_app_ack(message, state) do
     cached_response = Message.response_for(message) # ready for APP timeout
-    timer = restart_timeout(state[:timer], timeout)
+    timer = restart_timer(state[:timer], @processing_delay)
 
     %{state | phase: :awaiting_app_ack, message: cached_response, timer: timer}
   end
@@ -216,11 +217,11 @@ defmodule CoAP.Connection do
   defp update_state_for_return(state, status), do: {status, state}
 
   # TIMERS =====================================================================
-  defp start_timer(timeout, signal // :timeout), do: send_after(timeout, self(), signal)
+  defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
   defp restart_timer(nil, timeout), do: start_timer(timeout)
   defp restart_timer(timer, timeout) do
-    cancel_timer(timer)
+    Process.cancel_timer(timer)
 
     start_timer(timeout)
   end

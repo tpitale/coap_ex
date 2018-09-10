@@ -1,6 +1,8 @@
 defmodule CoAP.SocketServer do # => Listener
   use GenServer
 
+  alias CoAP.Message
+
   def start_link() do
     GenServer.start_link(__MODULE__, [0])
   end
@@ -22,32 +24,33 @@ defmodule CoAP.SocketServer do # => Listener
   # end
 
   def handle_info({:udp, _socket, peer_ip, peer_port, data}, %{connections: connections, handler: handler} = state) do
-    token = token_for(data) # may cause an issue if we don't get a valid coap message
-    connection_id = {peer_ip, peer_port, token}
+    message = Message.decode(data)
+    # token = token_for(data) # may cause an issue if we don't get a valid coap message
+    connection_id = {peer_ip, peer_port, message.token}
 
     {:ok, connection} = Map.fetch(connections, connection_id) ||
                           start_connection(self(), handler, connection_id)
 
-    send(connection, {:receive, data}) # TODO: if it's alive?
+    send(connection, {:receive, message}) # TODO: if it's alive?
     # TODO: error if dead process
 
-    {:noreply, %{state | connections: Map.put(connections, connection_id, connection)}
+    {:noreply, %{state | connections: Map.put(connections, connection_id, connection)}}
   end
 
   # def handle_cast({:deliver, peer, data}, state) # TODO: accept data for replies
 
   # TODO: move to Message?
-  defp token_for(<<
-    _version_type::binary-size(4),
-    token_length::unsigned-integer-size(4),
-    _unused::binary-size(24),
-    payload::binary
-  >>) do
-    # TODO: Should we just use Message.decode().token?
-    <<token::binary-size(token_length), _rest:: binary>> = payload
-
-    token
-  end
+  # defp token_for(<<
+  #   _version_type::binary-size(4),
+  #   token_length::unsigned-integer-size(4),
+  #   _unused::binary-size(24),
+  #   payload::binary
+  # >>) do
+  #   # TODO: Should we just use Message.decode().token?
+  #   <<token::binary-size(token_length), _rest:: binary>> = payload
+  #
+  #   token
+  # end
 
   defp start_connection(server, handler, peer) do
     DynamicSupervisor.start_child(
