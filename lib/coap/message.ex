@@ -116,7 +116,8 @@ defmodule CoAP.Message do
           uri_path: ["resource"],
           uri_query: ["who=world"]
         },
-        payload: "payload"
+        payload: "payload",
+        method: :put
       }
 
       iex> message = <<68, 1, 0, 1, 163, 249, 107, 129, 57, 108, 111, 99, 97, 108, 104, 111, 115,
@@ -136,7 +137,8 @@ defmodule CoAP.Message do
            content_format: "text/plain",
            uri_host: "localhost"
         },
-        payload: "data"
+        payload: "data",
+        method: :get
       }
   """
   def decode(unquote(@message_header_format)) do
@@ -160,7 +162,7 @@ defmodule CoAP.Message do
     }
   end
 
-  defp method_for(0, code_detail), do: @types[code_detail]
+  defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil
 
   def response_for(%__MODULE__{type: :con} = message) do

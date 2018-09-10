@@ -10,7 +10,7 @@ defmodule CoAP.SocketServer do # => Listener
   # init with port 5163/config (server), or 0 (client)
 
   # handler => server or client
-  def init(port, handler) do
+  def init({port, handler}) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
     {:ok, %{port: port, socket: socket, handler: handler, connections: %{}}}
@@ -55,8 +55,10 @@ defmodule CoAP.SocketServer do # => Listener
   defp start_connection(server, handler, peer) do
     DynamicSupervisor.start_child(
       CoAP.ConnectionSupervisor, # TODO: start this in the CoAP application
-      CoAP.Connection,
-      [server, handler, peer]
+      {
+        CoAP.Connection,
+        [server, handler, peer]
+      }
     )
   end
 end
