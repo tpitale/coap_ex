@@ -145,7 +145,10 @@ defmodule CoAP.Connection do
     %{state | phase: :awaiting_peer_ack, message: message}
   end
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
-    # build & send ack
+    ack = Message.ack_for(message)
+
+    reply(ack, state)
+
     %{state | phase: :peer_ack_sent}
   end
 
@@ -157,13 +160,12 @@ defmodule CoAP.Connection do
     %{state | phase: :peer_ack_sent}
   end
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
-    # TODO: when we run out of retries
-    state
+    # TODO: send error back to handler?
+    %{state | timer: nil}
   end
   defp timeout(%{
           phase: :awaiting_peer_ack,
           message: message,
-          timer: timer,
           retry_timeout: timeout,
           retries: retries
         } = state) do
@@ -171,7 +173,7 @@ defmodule CoAP.Connection do
     reply(message, state)
 
     timeout = timeout * 2
-    timer = restart_timer(timer, timeout)
+    timer = start_timer(timeout)
 
     %{state | phase: :awaiting_peer_ack, timer: timer, retry_timeout: timeout, retries: (retries-1)}
   end

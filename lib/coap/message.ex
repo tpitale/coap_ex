@@ -172,4 +172,18 @@ defmodule CoAP.Message do
       token: message.token
     }
   end
+
+  def response_for(%__MODULE__{type: :non} = message) do
+    %__MODULE__{
+      type: :non,
+      token: message.token
+    }
+  end
+
+  def ack_for(%__MODULE__{} = message) do
+    %__MODULE__{
+      type: :ack,
+      message_id: message.message_id
+    }
+  end
 end
