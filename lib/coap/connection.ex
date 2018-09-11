@@ -33,7 +33,7 @@ defmodule CoAP.Connection do
       phase: :idle,
       message: <<>>, # message sent at timeout
       timer: nil, # timer handling timeout
-      retries: 0,
+      retries: @max_retries,
       retry_timeout: 0
     }}
   end
@@ -156,16 +156,24 @@ defmodule CoAP.Connection do
 
     %{state | phase: :peer_ack_sent}
   end
-  defp timeout(%{phase: :awaiting_peer_ack, message: message, timer: timer, retry_timeout: timeout} = state) do
-    # retry send stored message
+  defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
+    # TODO: when we run out of retries
+    state
+  end
+  defp timeout(%{
+          phase: :awaiting_peer_ack,
+          message: message,
+          timer: timer,
+          retry_timeout: timeout,
+          retries: retries
+        } = state) do
+
     reply(message, state)
 
-    # increase timer to X*2
     timeout = timeout * 2
     timer = restart_timer(timer, timeout)
-    # until conn timeout, limit to retries?
-    # -> awaiting_peer_ack
-    %{state | phase: :awaiting_peer_ack, timer: timer, retry_timeout: timeout}
+
+    %{state | phase: :awaiting_peer_ack, timer: timer, retry_timeout: timeout, retries: (retries-1)}
   end
 
   # STATE TRANSITIONS ==========================================================
