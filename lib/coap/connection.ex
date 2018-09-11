@@ -79,35 +79,35 @@ defmodule CoAP.Connection do
 
   # con, request (server)
   defp receive_message(%Message{method: method, type: :con} = message, %{phase: :idle} = state) when is_atom(method) do
-    handle_request(message, state)
+    handle_request(message, state[:handler])
     await_app_ack(message, state)
   end
   # con, response (client)
   defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    handle_response(message, state)
+    handle_response(message, state[:handler])
     await_app_ack(message, state)
   end
 
   defp receive_message(%Message{type: :reset} = message, %{phase: :sent_non} = state) do
-    handle_error(message, state)
+    handle_error(message, state[:handler])
 
     %{state | phase: :got_reset}
   end
 
   defp receive_message(%Message{type: :ack} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_ack(message, state)
+    handle_ack(message, state[:handler])
 
     %{state | phase: :app_ack_sent}
   end
 
   defp receive_message(%Message{type: :reset} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_error(message, state)
+    handle_error(message, state[:handler])
 
     %{state | phase: :app_ack_sent}
   end
 
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-    handle_response(message, state)
+    handle_response(message, state[:handler])
 
     %{state | phase: :app_ack_sent}
   end
@@ -120,13 +120,13 @@ defmodule CoAP.Connection do
 
   # non, request (server)
   defp receive_message(%Message{method: method, type: :non} = message, state) when is_atom(method) do
-    handle_request(message, state)
+    handle_request(message, state[:handler])
 
     %{state | phase: :got_non}
   end
   # non, response (client)
   defp receive_message(%Message{type: :non} = message, state) do
-    handle_response(message, state)
+    handle_response(message, state[:handler])
 
     %{state | phase: :got_non}
   end
@@ -145,11 +145,7 @@ defmodule CoAP.Connection do
     %{state | phase: :awaiting_peer_ack, message: message}
   end
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
-    ack = Message.ack_for(message)
-
-    reply(ack, state)
-
-    %{state | phase: :peer_ack_sent}
+    send_peer_ack(message, state)
   end
 
   # TIMEOUTS ===================================================================
@@ -187,28 +183,33 @@ defmodule CoAP.Connection do
   end
 
   defp send_peer_ack(message, state) do
-    #
-    # timer =
+    ack = Message.ack_for(message)
 
-    %{state | phase: :peer_ack_sent, message: message, timer: nil}
+    reply(ack, state)
+
+    # TODO: do we need a timer for this?
+
+    %{state | phase: :peer_ack_sent, message: ack, timer: nil}
   end
 
   # REQUEST ====================================================================
-  defp handle_request(message, state) do
+  defp handle_request(message, handler) do
     # call the handler with the message and self()
+    send(handler, {:request, message, self()})
   end
 
   # RESPONSE ===================================================================
-  defp handle_response(message, state) do
+  defp handle_response(message, handler) do
     # call the handler with the message and self()
+    send(handler, {:response, message, self()})
   end
 
-  defp handle_ack(message, state) do
-    # send(handler, :ack)
+  defp handle_ack(_message, handler) do
+    send(handler, :ack)
   end
 
-  defp handle_error(message, state) do
-    # send(handler, :error)
+  defp handle_error(_message, handler) do
+    send(handler, :error)
   end
 
   defp reply(message, %{server: server} = state) do
