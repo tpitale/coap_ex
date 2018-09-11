@@ -14,6 +14,7 @@ defmodule Coap.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
+      mod: {CoAP, []},
       extra_applications: [:logger]
     ]
   end
