@@ -28,6 +28,8 @@ defmodule CoAP.SocketServer do # => Listener
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
+    # TODO: store ref for connection process?
+    # TODO: Monitor and remove connection when terminating?
     {:ok, connection} = Map.fetch(connections, connection_id) ||
                           start_connection(self(), handler, connection_id)
 
@@ -37,7 +39,14 @@ defmodule CoAP.SocketServer do # => Listener
     {:noreply, %{state | connections: Map.put(connections, connection_id, connection)}}
   end
 
-  # def handle_cast({:deliver, peer, data}, state) # TODO: accept data for replies
+  def handle_info({:deliver, peer, message}, %{socket: socket} = state) do # TODO: accept data for replies
+    data = Message.encode(message)
+    {ip, port} = peer
+
+    :gen_udp.send(socket, ip, port, data)
+
+    {:noreply, state}
+  end
 
   # TODO: move to Message?
   # defp token_for(<<

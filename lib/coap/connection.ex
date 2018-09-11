@@ -38,19 +38,8 @@ defmodule CoAP.Connection do
     }}
   end
 
-  # TODO: connection timeouts
-
   def handle_info({:receive, %Message{} = message}, state) do
-    # TODO: based on the type of the message coming in
-    # we have to handle it in different ways
-    # 1. con -> ack|reset, handle the data
-    # 2. ack|reset, change the state of the connection
-    # Also depends on the current state of the connection
-    # 1. idle, can accept anything/waiting for reply
-
-    # handler.call(Message.decode(data))
-    # GenServer.call(handler, {:something, Message.decode(data)})
-
+    # TODO: connection timeouts
     # TODO: start timer for conn
 
     message
@@ -205,16 +194,20 @@ defmodule CoAP.Connection do
   end
 
   defp handle_ack(message, state) do
+    # send(handler, :ack)
   end
 
   defp handle_error(message, state) do
+    # send(handler, :error)
   end
 
-  defp reply(_message, _state) do
-    # encode and send to server socket?
+  defp reply(message, %{server: server} = state) do
+    send(server, {:deliver, peer_for(state), message})
   end
 
   defp update_state_for_return(state, status), do: {status, state}
+
+  defp peer_for(%{ip: ip, port: port}), do: {ip, port}
 
   # TIMERS =====================================================================
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
