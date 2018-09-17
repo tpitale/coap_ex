@@ -3,17 +3,17 @@ defmodule CoAP.SocketServer do # => Listener
 
   alias CoAP.Message
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, [0])
+  def start_link(args) do
+    GenServer.start_link(__MODULE__, args)
   end
 
   # init with port 5163/config (server), or 0 (client)
 
-  # handler => server or client
-  def init({port, handler}) do
+  # endpoint => server or client
+  def init({port, endpoint}) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
-    {:ok, %{port: port, socket: socket, handler: handler, connections: %{}}}
+    {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}}}
   end
 
   # def server?(pid), do: GenServer.call(pid, :server)
@@ -23,7 +23,7 @@ defmodule CoAP.SocketServer do # => Listener
   #   {:reply, port > 0, state}
   # end
 
-  def handle_info({:udp, _socket, peer_ip, peer_port, data}, %{connections: connections, handler: handler} = state) do
+  def handle_info({:udp, _socket, peer_ip, peer_port, data}, %{connections: connections, endpoint: endpoint} = state) do
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
@@ -31,7 +31,7 @@ defmodule CoAP.SocketServer do # => Listener
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
     {:ok, connection} = Map.fetch(connections, connection_id) ||
-                          start_connection(self(), handler, connection_id)
+                          start_connection(self(), endpoint, connection_id)
 
     send(connection, {:receive, message}) # TODO: if it's alive?
     # TODO: error if dead process
@@ -61,12 +61,12 @@ defmodule CoAP.SocketServer do # => Listener
   #   token
   # end
 
-  defp start_connection(server, handler, peer) do
+  defp start_connection(server, endpoint, peer) do
     DynamicSupervisor.start_child(
-      CoAP.ConnectionSupervisor, # TODO: start this in the CoAP application
+      CoAP.ConnectionSupervisor,
       {
         CoAP.Connection,
-        [server, handler, peer]
+        [server, endpoint, peer]
       }
     )
   end

@@ -18,15 +18,15 @@ defmodule CoAP.Connection do
 
   def init(client) do
     # TODO: make a new socket server with DynamicSupervisor
-    # client is the handler
+    # client is the endpoint
     # peer is the target ip/port?
-    {:ok, %{handler: client}}
+    {:ok, %{handler: start_handler(client)}}
   end
 
-  def init(server, handler, {ip, port, token} = _peer) do
+  def init(server, endpoint, {ip, port, token} = _peer) do
     {:ok, %{
       server: server, # udp socket
-      handler: handler, # App
+      handler: start_handler(endpoint), # App
       ip: ip, # peer ip
       port: port, # peer port
       token: token, # connection token
@@ -79,29 +79,29 @@ defmodule CoAP.Connection do
 
   # con, request (server)
   defp receive_message(%Message{method: method, type: :con} = message, %{phase: :idle} = state) when is_atom(method) do
-    handle_request(message, state[:handler])
+    handle_request(message, state[:handler], peer_for(state))
     await_app_ack(message, state)
   end
   # con, response (client)
   defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    handle_response(message, state[:handler])
+    handle_response(message, state[:handler], peer_for(state))
     await_app_ack(message, state)
   end
 
   defp receive_message(%Message{type: :reset} = message, %{phase: :sent_non} = state) do
-    handle_error(message, state[:handler])
+    handle_error(message, state[:handler], peer_for(state))
 
     %{state | phase: :got_reset}
   end
 
   defp receive_message(%Message{type: :ack} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_ack(message, state[:handler])
+    handle_ack(message, state[:handler], peer_for(state))
 
     %{state | phase: :app_ack_sent}
   end
 
   defp receive_message(%Message{type: :reset} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_error(message, state[:handler])
+    handle_error(message, state[:handler], peer_for(state))
 
     %{state | phase: :app_ack_sent}
   end
@@ -120,13 +120,13 @@ defmodule CoAP.Connection do
 
   # non, request (server)
   defp receive_message(%Message{method: method, type: :non} = message, state) when is_atom(method) do
-    handle_request(message, state[:handler])
+    handle_request(message, state[:handler], peer_for(state))
 
     %{state | phase: :got_non}
   end
   # non, response (client)
   defp receive_message(%Message{type: :non} = message, state) do
-    handle_response(message, state[:handler])
+    handle_response(message, state[:handler], peer_for(state))
 
     %{state | phase: :got_non}
   end
@@ -193,22 +193,22 @@ defmodule CoAP.Connection do
   end
 
   # REQUEST ====================================================================
-  defp handle_request(message, handler) do
+  defp handle_request(message, handler, peer) do
     # call the handler with the message and self()
-    send(handler, {:request, message, self()})
+    send(handler, {:request, message, peer, self()})
   end
 
   # RESPONSE ===================================================================
-  defp handle_response(message, handler) do
+  defp handle_response(message, handler, peer) do
     # call the handler with the message and self()
-    send(handler, {:response, message, self()})
+    send(handler, {:response, message, peer, self()})
   end
 
-  defp handle_ack(_message, handler) do
+  defp handle_ack(_message, handler, _peer) do
     send(handler, :ack)
   end
 
-  defp handle_error(_message, handler) do
+  defp handle_error(_message, handler, _peer) do
     send(handler, :error)
   end
 
@@ -228,5 +228,16 @@ defmodule CoAP.Connection do
     Process.cancel_timer(timer)
 
     start_timer(timeout)
+  end
+
+  # HANDLER
+  defp start_handler(endpoint) do
+    handler = DynamicSupervisor.start_child(
+      CoAP.HandlerSupervisor,
+      {
+        CoAP.Handler,
+        [endpoint]
+      }
+    )
   end
 end

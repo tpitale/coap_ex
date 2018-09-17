@@ -23,7 +23,7 @@ defmodule CoAP.Phoenix.Request do
   }
 
   @doc """
-  Accept a Message, build a request map; include socket
+  Accept a Message, build a request map
 
   Examples:
 
@@ -37,7 +37,7 @@ defmodule CoAP.Phoenix.Request do
       iex>   options: %{uri_path: ["api", ""], uri_query: ["who=world", "what=hello"], uri_host: "localhost"},
       iex>   payload: "payload"
       iex> }
-      iex> CoAP.Phoenix.Request.build(message, "socket", {127,0,0,1}, 5683)
+      iex> CoAP.Phoenix.Request.build(message, {{127,0,0,1}, 5683})
       %{
         headers: %{
           uri_path: ["api", ""],
@@ -49,12 +49,11 @@ defmodule CoAP.Phoenix.Request do
         path: "api/",
         peer: {{127,0,0,1}, 5683},
         port: 5683,
-        qs: "who=world&what=hello",
-        socket: "socket"
+        qs: "who=world&what=hello"
       }
   """
-  def build(%Message{options: options} = message, socket, address, port, config \\ %{}) do
-    ip_string = Enum.join(Tuple.to_list(address), ".")
+  def build(%Message{options: options} = message, {address, port}, config \\ %{}) do
+    _ip_string = Enum.join(Tuple.to_list(address), ".")
 
     # TODO: defstruct?
     %{
@@ -64,8 +63,7 @@ defmodule CoAP.Phoenix.Request do
       port: port,
       qs: options[:uri_query] |> Enum.join("&"),
       headers: options,
-      peer: {address, port},
-      socket: socket
+      peer: {address, port}
     }
   end
 
