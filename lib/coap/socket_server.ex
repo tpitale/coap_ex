@@ -1,6 +1,8 @@
 defmodule CoAP.SocketServer do # => Listener
   use GenServer
 
+  import Logger, only: [info: 1]
+
   alias CoAP.Message
 
   def start_link(args) do
@@ -10,7 +12,7 @@ defmodule CoAP.SocketServer do # => Listener
   # init with port 5163/config (server), or 0 (client)
 
   # endpoint => server or client
-  def init({port, endpoint}) do
+  def init([port, endpoint]) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
     {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}}}
@@ -28,9 +30,11 @@ defmodule CoAP.SocketServer do # => Listener
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
+    info("#{inspect(connection_id)}")
+
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
-    {:ok, connection} = Map.fetch(connections, connection_id) ||
+    {:ok, connection} = Map.get(connections, connection_id) ||
                           start_connection(self(), endpoint, connection_id)
 
     send(connection, {:receive, message}) # TODO: if it's alive?

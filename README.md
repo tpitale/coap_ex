@@ -23,13 +23,19 @@ be found at [https://hexdocs.pm/coap](https://hexdocs.pm/coap).
 
 ## Configuration
 
-In phoenix `mix.exs`:
+In phoenix `config.exs`:
 
 ```
 config :my_app, MyApp.Coap.Endpoint,
   http: false, https: false, server: false,
   coap: [port: 5683]
 
+```
+
+Add coap to extract applications config (also in `mix.exs`):
+
+```
+extra_applications: [:coap]
 ```
 
 In `lib/my_app.ex` add supervisor for the endpoint:

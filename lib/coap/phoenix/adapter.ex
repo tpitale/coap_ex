@@ -1,13 +1,9 @@
-defmodule CoAP.Phoenix.Endpoint do
-  # TODO: our own conn module
+defmodule CoAP.Phoenix.Adapter do
   @connection CoAP.Phoenix.Conn
 
   alias CoAP.Phoenix.Request
 
-  # TODO: make this a gen_server that has a process for each message?
-  # TODO: or make a simple process, with start_link, to be supervised
-  # TODO: add each one to a HandlerSupervisor
-  # TODO: pool of handlers, or infinite?
+  # import Logger, only: [info: 1]
 
   @moduledoc """
   1. Take a message
@@ -18,9 +14,14 @@ defmodule CoAP.Phoenix.Endpoint do
   """
 
   def request(message, {endpoint, peer}) do
+    config = endpoint.config(:coap)
+
     message
-    |> Request.build(message, peer)
-    |> process({endpoint})
+    |> Request.build(peer, config)
+    |> process({endpoint, config})
+    |> maybe_send()
+    # TODO: what are opts supposed to be?
+    # Answer: config from coap key for endpoint
   end
 
   # unlikely to use, as this is not a client
@@ -28,23 +29,16 @@ defmodule CoAP.Phoenix.Endpoint do
   # def ack({endpoint, _peer})
   # def error({endpoint, _peer})
 
-  # TODO: parse message to phoenix request/conn
-
-
   defp process(req, {endpoint, opts}) do
     # TODO: conn_from_message(message)
     %{path_info: path_info} = conn = @connection.conn(req)
 
-    IO.inspect(conn)
-
     case endpoint.__dispatch__(path_info, opts) do
       {:plug, handler, opts} ->
-        %{adapter: {@connection, req}} =
+        %{adapter: {@connection, _req}} =
           conn
           |> handler.call(opts)
-          |> maybe_send(handler)
-
-        {:ok, req, {handler, opts}}
+      # TODO: not found 404 if no plug?
     end
 
     # try do
@@ -79,12 +73,12 @@ defmodule CoAP.Phoenix.Endpoint do
   end
 
   # TODO: our Connection response rather than Plug.Conn.send_resp(conn)
-  defp maybe_send(%Plug.Conn{state: :unset}, _plug), do: raise(Plug.Conn.NotSentError)
-  defp maybe_send(%Plug.Conn{state: :set} = conn, _plug), do: conn
-  # defp maybe_send(%Plug.Conn{} = conn, _plug), do: conn
+  defp maybe_send(%Plug.Conn{state: :unset}), do: raise(Plug.Conn.NotSentError)
+  defp maybe_send(%Plug.Conn{state: :set} = conn), do: conn
+  # defp maybe_send(%Plug.Conn{} = conn), do: conn
 
-  defp maybe_send(other, plug) do
-    raise "CoAP adapter expected #{inspect(plug)} to return Plug.Conn but got: " <>
+  defp maybe_send(other) do
+    raise "CoAP adapter expected to return Plug.Conn but got: " <>
       inspect(other)
   end
 end

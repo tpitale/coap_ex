@@ -16,8 +16,8 @@ defmodule CoAP.Phoenix.Conn do
     %Plug.Conn{
       adapter: {__MODULE__, req},
       host: host,
-      method: method,
-      owner: self(),
+      method: method |> to_method_string(),
+      owner: self(), # TODO: is this right?
       path_info: split_path(path),
       port: port,
       remote_ip: remote_ip,
@@ -55,5 +55,9 @@ defmodule CoAP.Phoenix.Conn do
 
   defp to_headers_list(headers) when is_map(headers) do
     :maps.to_list(headers)
+  end
+
+  defp to_method_string(verb) when is_atom(verb) do
+    verb |> Atom.to_string |> String.upcase
   end
 end

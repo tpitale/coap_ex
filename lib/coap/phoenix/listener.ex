@@ -1,7 +1,7 @@
 defmodule CoAP.Phoenix.Listener do
   use GenServer
 
-  alias CoAP.Phoenix.Endpoint
+  @adapter CoAP.Phoenix.Adapter
 
   import Logger, only: [info: 1]
 
@@ -34,7 +34,7 @@ defmodule CoAP.Phoenix.Listener do
 
     info("Starting Listener: #{inspect(config)}")
 
-    server = CoAP.SocketServer.start_link(config[:port], endpoint)
+    {:ok, server} = CoAP.SocketServer.start_link([config[:port], {@adapter, endpoint}])
     # TODO: ref and monitor?
     # TODO: die if server dies?
 

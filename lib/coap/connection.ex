@@ -14,19 +14,14 @@ defmodule CoAP.Connection do
   @connection_timeout 247000
   @non_timeout 145000
 
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+  def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
-  def init(client) do
-    # TODO: make a new socket server with DynamicSupervisor
-    # client is the endpoint
-    # peer is the target ip/port?
-    {:ok, %{handler: start_handler(client)}}
-  end
+  def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
+    {:ok, handler} = start_handler(adapter, endpoint)
 
-  def init(server, endpoint, {ip, port, token} = _peer) do
     {:ok, %{
       server: server, # udp socket
-      handler: start_handler(endpoint), # App
+      handler: handler, # App
       ip: ip, # peer ip
       port: port, # peer port
       token: token, # connection token
@@ -37,6 +32,17 @@ defmodule CoAP.Connection do
       retry_timeout: 0
     }}
   end
+
+  # Non-adapted endpoint, e.g., client
+  # def init([server, endpoint, {ip, port, token} = _peer]) do
+  # end
+
+  # def init(client) do
+  #   # TODO: make a new socket server with DynamicSupervisor
+  #   # client is the endpoint
+  #   # peer is the target ip/port?
+  #   {:ok, %{handler: start_handler(client)}}
+  # end
 
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
@@ -107,7 +113,7 @@ defmodule CoAP.Connection do
   end
 
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-    handle_response(message, state[:handler])
+    handle_response(message, state[:handler], peer_for(state))
 
     %{state | phase: :app_ack_sent}
   end
@@ -231,12 +237,12 @@ defmodule CoAP.Connection do
   end
 
   # HANDLER
-  defp start_handler(endpoint) do
-    handler = DynamicSupervisor.start_child(
+  defp start_handler(adapter, endpoint) do
+    DynamicSupervisor.start_child(
       CoAP.HandlerSupervisor,
       {
         CoAP.Handler,
-        [endpoint]
+        [adapter, endpoint]
       }
     )
   end

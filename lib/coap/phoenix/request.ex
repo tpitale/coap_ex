@@ -61,7 +61,7 @@ defmodule CoAP.Phoenix.Request do
       path: options[:uri_path] |> Enum.join("/"),
       host: options[:uri_host] || config[:host],
       port: port,
-      qs: options[:uri_query] |> Enum.join("&"),
+      qs: (options[:uri_query] || []) |> Enum.join("&"),
       headers: options,
       peer: {address, port}
     }
