@@ -13,15 +13,12 @@ defmodule CoAP.Phoenix.Adapter do
   5. Return result in message form
   """
 
-  def request(message, {endpoint, peer}) do
+  def request(message, {endpoint, peer}, owner) do
     config = endpoint.config(:coap)
 
     message
-    |> Request.build(peer, config)
+    |> Request.build(peer, owner, config)
     |> process({endpoint, config})
-    |> maybe_send()
-    # TODO: what are opts supposed to be?
-    # Answer: config from coap key for endpoint
   end
 
   # unlikely to use, as this is not a client
@@ -38,7 +35,7 @@ defmodule CoAP.Phoenix.Adapter do
         %{adapter: {@connection, _req}} =
           conn
           |> handler.call(opts)
-      # TODO: not found 404 if no plug?
+          |> maybe_send(handler)
     end
 
     # try do
@@ -72,13 +69,12 @@ defmodule CoAP.Phoenix.Adapter do
     # end
   end
 
-  # TODO: our Connection response rather than Plug.Conn.send_resp(conn)
-  defp maybe_send(%Plug.Conn{state: :unset}), do: raise(Plug.Conn.NotSentError)
-  defp maybe_send(%Plug.Conn{state: :set} = conn), do: conn
-  # defp maybe_send(%Plug.Conn{} = conn), do: conn
+  defp maybe_send(%Plug.Conn{state: :unset}, _plug), do: raise(Plug.Conn.NotSentError)
+  defp maybe_send(%Plug.Conn{state: :set} = conn, _plug), do: Plug.Conn.send_resp(conn)
+  defp maybe_send(%Plug.Conn{} = conn, _plug), do: conn
 
-  defp maybe_send(other) do
-    raise "CoAP adapter expected to return Plug.Conn but got: " <>
-      inspect(other)
+  defp maybe_send(other, plug) do
+    raise "Cowboy2 adapter expected #{inspect(plug)} to return Plug.Conn but got: " <>
+            inspect(other)
   end
 end

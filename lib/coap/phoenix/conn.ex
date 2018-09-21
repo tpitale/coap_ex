@@ -1,6 +1,8 @@
 defmodule CoAP.Phoenix.Conn do
   # @behaviour Plug.Conn.Adapter
 
+  alias CoAP.Message
+
   def conn(req) do
     %{
       path: path,
@@ -9,15 +11,16 @@ defmodule CoAP.Phoenix.Conn do
       method: method,
       headers: headers,
       qs: qs,
-      peer: {remote_ip, _}
+      peer: {remote_ip, _},
+      owner: owner
     } = req
 
     # Must be Plug.Conn for Phoenix to use it
     %Plug.Conn{
       adapter: {__MODULE__, req},
       host: host,
-      method: method |> to_method_string(),
-      owner: self(), # TODO: is this right?
+      method: to_method_string(method),
+      owner: owner,
       path_info: split_path(path),
       port: port,
       remote_ip: remote_ip,
@@ -31,14 +34,22 @@ defmodule CoAP.Phoenix.Conn do
   def send_resp(req, status, headers, body) do
     IO.puts("#{inspect(req)} returns #{inspect(status)}, #{inspect(headers)}, #{inspect(body)}")
 
-    # TODO: change headers into message options
-    # headers = to_headers_map(headers)
+    message = req.message
+    connection = req.owner
 
-    # TODO: where does status go?
-    # status = Integer.to_string(status) <> " " <> Plug.Conn.Status.reason_phrase(status)
+    {code_class, code_detail} = Message.encode_status(status)
 
-    # TODO: udp send encoded message, body as payload
-    # req = :cowboy_req.reply(status, headers, body, req)
+    result = %Message{
+      type: :con,
+      code_class: code_class,
+      code_detail: code_detail,
+      message_id: message.message_id,
+      token: message.token,
+      # TODO: options from filtered headers
+      payload: body
+    }
+
+    send(connection, {:deliver, result})
 
     {:ok, nil, req}
   end

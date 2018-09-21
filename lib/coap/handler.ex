@@ -21,15 +21,11 @@ defmodule CoAP.Handler do
   # It _should not_ be an issue because this process is already per-peer connection
 
   def handle_info({:request, message, peer, connection}, {adapter, endpoint} = state) do
-    adapter.request(message, {endpoint, peer})
-    |> deliver(connection)
-
+    adapter.request(message, {endpoint, peer}, connection)
     {:noreply, state}
   end
   def handle_info({:response, message, peer, connection}, {adapter, endpoint} = state) do
-    adapter.response(message, {endpoint, peer})
-    |> deliver(connection)
-
+    adapter.response(message, {endpoint, peer}, connection)
     {:noreply, state}
   end
   def handle_info(:ack, {adapter, endpoint} = state) do
@@ -41,7 +37,7 @@ defmodule CoAP.Handler do
     {:noreply, state}
   end
 
-  defp deliver(result, connection) do
-    send(connection, {:deliver, result})
-  end
+  # defp deliver(result, connection) do
+  #   send(connection, {:deliver, result})
+  # end
 end

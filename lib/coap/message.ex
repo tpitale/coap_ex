@@ -162,6 +162,12 @@ defmodule CoAP.Message do
     }
   end
 
+  def encode_status(status) when is_integer(status) do
+    [code_class | code_detail] = Integer.digits(status)
+
+    {code_class, (code_detail |> Integer.undigits)}
+  end
+
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil
 
@@ -178,6 +184,18 @@ defmodule CoAP.Message do
       type: :non,
       token: message.token
     }
+  end
+
+  def response_for(method, message) do
+    %__MODULE__{response_for(message) | method: method}
+  end
+
+  def response_for({code_class, code_detail}, payload, message) do
+    %__MODULE__{response_for(message) | code_class: code_class, code_detail: code_detail, payload: payload}
+  end
+
+  def response_for(method, payload, message) do
+    %__MODULE__{response_for(message) | method: method, payload: payload}
   end
 
   def ack_for(%__MODULE__{} = message) do

@@ -4,6 +4,8 @@ defmodule CoAP.Connection do
   # use CoAP.Transport
   # use CoAP.Responder
 
+  import Logger, only: [info: 1]
+
   alias CoAP.Message
 
   @ack_timeout 2000
@@ -63,6 +65,8 @@ defmodule CoAP.Connection do
     timeout(state)
     |> update_state_for_return(:noreply)
   end
+
+  def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
 
   # TODO: connection timeout, set to original state?
 
@@ -180,6 +184,11 @@ defmodule CoAP.Connection do
     %{state | phase: :awaiting_peer_ack, timer: timer, retry_timeout: timeout, retries: (retries-1)}
   end
 
+  defp timeout(state) do
+    info("Received timeout: #{inspect state}")
+    state
+  end
+
   # STATE TRANSITIONS ==========================================================
   defp await_app_ack(message, state) do
     cached_response = Message.response_for(message) # ready for APP timeout
@@ -189,13 +198,13 @@ defmodule CoAP.Connection do
   end
 
   defp send_peer_ack(message, state) do
-    ack = Message.ack_for(message)
+    response = Message.response_for({message.code_class, message.code_detail}, message.payload, message)
 
-    reply(ack, state)
+    info("Sending response: #{inspect response}")
 
-    # TODO: do we need a timer for this?
+    reply(response, state)
 
-    %{state | phase: :peer_ack_sent, message: ack, timer: nil}
+    %{state | phase: :peer_ack_sent, message: response, timer: nil}
   end
 
   # REQUEST ====================================================================

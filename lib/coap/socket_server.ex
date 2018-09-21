@@ -47,7 +47,9 @@ defmodule CoAP.SocketServer do # => Listener
     data = Message.encode(message)
     {ip, port} = peer
 
-    :gen_udp.send(socket, ip, port, data)
+    info("Sending data: #{inspect data} to #{inspect peer}")
+
+    IO.inspect(:gen_udp.send(socket, ip, port, data))
 
     {:noreply, state}
   end
