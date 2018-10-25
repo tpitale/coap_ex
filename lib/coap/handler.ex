@@ -24,14 +24,17 @@ defmodule CoAP.Handler do
     adapter.request(message, {endpoint, peer}, connection)
     {:noreply, state}
   end
+
   def handle_info({:response, message, peer, connection}, {adapter, endpoint} = state) do
     adapter.response(message, {endpoint, peer}, connection)
     {:noreply, state}
   end
+
   def handle_info(:ack, {adapter, endpoint} = state) do
     adapter.ack({endpoint, {}})
     {:noreply, state}
   end
+
   def handle_info(:error, {adapter, endpoint} = state) do
     adapter.error({endpoint, {}})
     {:noreply, state}

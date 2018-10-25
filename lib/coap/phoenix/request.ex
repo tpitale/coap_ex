@@ -16,10 +16,10 @@ defmodule CoAP.Phoenix.Request do
   # code_class => 0
   # code_detail => @methods
   @methods %{
-    {0,01} => :get,
-    {0,02} => :post,
-    {0,03} => :put,
-    {0,04} => :delete
+    {0, 01} => :get,
+    {0, 02} => :post,
+    {0, 03} => :put,
+    {0, 04} => :delete
   }
 
   @doc """

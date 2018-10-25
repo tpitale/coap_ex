@@ -1,4 +1,4 @@
-defmodule CoAP.SocketServer do # => Listener
+defmodule CoAP.SocketServer do
   use GenServer
 
   import Logger, only: [info: 1]
@@ -25,7 +25,10 @@ defmodule CoAP.SocketServer do # => Listener
   #   {:reply, port > 0, state}
   # end
 
-  def handle_info({:udp, _socket, peer_ip, peer_port, data}, %{connections: connections, endpoint: endpoint} = state) do
+  def handle_info(
+        {:udp, _socket, peer_ip, peer_port, data},
+        %{connections: connections, endpoint: endpoint} = state
+      ) do
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
@@ -34,20 +37,22 @@ defmodule CoAP.SocketServer do # => Listener
 
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
-    {:ok, connection} = Map.get(connections, connection_id) ||
-                          start_connection(self(), endpoint, connection_id)
+    {:ok, connection} =
+      Map.get(connections, connection_id) || start_connection(self(), endpoint, connection_id)
 
-    send(connection, {:receive, message}) # TODO: if it's alive?
+    # TODO: if it's alive?
+    send(connection, {:receive, message})
     # TODO: error if dead process
 
     {:noreply, %{state | connections: Map.put(connections, connection_id, connection)}}
   end
 
-  def handle_info({:deliver, peer, message}, %{socket: socket} = state) do # TODO: accept data for replies
+  # TODO: accept data for replies
+  def handle_info({:deliver, peer, message}, %{socket: socket} = state) do
     data = Message.encode(message)
     {ip, port} = peer
 
-    info("Sending data: #{inspect data} to #{inspect peer}")
+    info("Sending data: #{inspect(data)} to #{inspect(peer)}")
 
     IO.inspect(:gen_udp.send(socket, ip, port, data))
 

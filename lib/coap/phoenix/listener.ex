@@ -22,7 +22,6 @@ defmodule CoAP.Phoenix.Listener do
     }
   end
 
-
   def start_link(endpoint) do
     GenServer.start_link(__MODULE__, endpoint)
   end

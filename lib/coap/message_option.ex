@@ -1,5 +1,5 @@
 defmodule CoAP.MessageOption do
-  @payload_marker 0xFF
+  # @payload_marker 0xFF
 
   defmodule UnsignedOptions do
     defmacro __using__(_) do
@@ -38,20 +38,22 @@ defmodule CoAP.MessageOption do
 
   defmodule Decoder do
     @options %{
-      1  => :if_match,
-      3  => :uri_host,
-      4  => :etag,
-      5  => :if_none_match,
-      6  => :observe, # draft-ietf-core-observe-16
-      7  => :uri_port,
-      8  => :location_path,
+      1 => :if_match,
+      3 => :uri_host,
+      4 => :etag,
+      5 => :if_none_match,
+      # draft-ietf-core-observe-16
+      6 => :observe,
+      7 => :uri_port,
+      8 => :location_path,
       11 => :uri_path,
       12 => :content_format,
       14 => :max_age,
       15 => :uri_query,
       17 => :accept,
       20 => :location_query,
-      23 => :block2, # draft-ietf-core-block-17
+      # draft-ietf-core-block-17
+      23 => :block2,
       27 => :block1,
       35 => :proxy_uri,
       39 => :proxy_scheme,
@@ -74,28 +76,36 @@ defmodule CoAP.MessageOption do
       decode_option(option_id, value)
     end
 
-    defp decode_option(option_id, value) when is_integer(option_id), do: decode_option(@options[option_id], value)
+    defp decode_option(option_id, value) when is_integer(option_id) do
+      decode_option(@options[option_id], value)
+    end
+
     defp decode_option(key, value) when is_atom(key), do: {key, decode_value(key, value)}
 
     defp decode_value(:if_none_match, <<>>), do: true
     defp decode_value(:block1, value), do: decode_block(value)
     defp decode_value(:block2, value), do: decode_block(value)
+
     defp decode_value(:content_format, value) do
       content_id = :binary.decode_unsigned(value)
       @content_formats[content_id] || content_id
     end
-    defp decode_value(key, value) when key in @unsigned, do: :binary.decode_unsigned(value)
-    defp decode_value(key, value), do: value
 
-    defp decode_block(<<number::size(4), more::size(1), extended_size::size(3)>>), do: decode_block(number, more, extended_size)
-    defp decode_block(<<number::size(12), more::size(1), extended_size::size(3)>>), do: decode_block(number, more, extended_size)
-    defp decode_block(<<number::size(28), more::size(1), extended_size::size(3)>>), do: decode_block(number, more, extended_size)
+    defp decode_value(key, value) when key in @unsigned, do: :binary.decode_unsigned(value)
+    defp decode_value(_key, value), do: value
+
+    defp decode_block(<<number::size(4), more::size(1), extended_size::size(3)>>),
+      do: decode_block(number, more, extended_size)
+
+    defp decode_block(<<number::size(12), more::size(1), extended_size::size(3)>>),
+      do: decode_block(number, more, extended_size)
+
+    defp decode_block(<<number::size(28), more::size(1), extended_size::size(3)>>),
+      do: decode_block(number, more, extended_size)
 
     defp decode_block(number, more, extended_size) do
-      {number, (if more == 0, do: false, else: true), trunc(:math.pow(2, extended_size+4))}
+      {number, if(more == 0, do: false, else: true), trunc(:math.pow(2, extended_size + 4))}
     end
-
-    defp decode_type(type) when is_integer(type), do: @types[type]
   end
 
   defmodule Encoder do
@@ -104,7 +114,8 @@ defmodule CoAP.MessageOption do
       uri_host: 3,
       etag: 4,
       if_none_match: 5,
-      observe: 6, # draft-ietf-core-observe-16
+      # draft-ietf-core-observe-16
+      observe: 6,
       uri_port: 7,
       location_path: 8,
       uri_path: 11,
@@ -113,7 +124,8 @@ defmodule CoAP.MessageOption do
       uri_query: 15,
       accept: 17,
       location_query: 20,
-      block2: 23, # draft-ietf-core-block-17
+      # draft-ietf-core-block-17
+      block2: 23,
       block1: 27,
       proxy_uri: 35,
       proxy_scheme: 39,
@@ -137,10 +149,12 @@ defmodule CoAP.MessageOption do
     end
 
     def encode({key, value}, false), do: encode_option({key, value})
+
     def encode({key, values}, true) do
       # we must keep the order
       values
-      |> Enum.filter(fn(v) -> v end) # remove nil
+      # remove nil
+      |> Enum.filter(fn v -> v end)
       |> Enum.map(&encode_option({key, &1}))
     end
 
@@ -148,6 +162,7 @@ defmodule CoAP.MessageOption do
     defp encode_option({:block2, value}), do: {@options[:block2], encode_block(value)}
     defp encode_option({:block1, value}), do: {@options[:block1], encode_block(value)}
     defp encode_option({:if_none_match, true}), do: {@options[:if_none_match], <<>>}
+
     defp encode_option({:content_format, value}) when is_binary(value) do
       {:content_format, @content_formats[value]}
       |> encode_option
@@ -159,18 +174,22 @@ defmodule CoAP.MessageOption do
     end
 
     # Encode everything else
-    defp encode_option({key, value}) when is_atom(key), do: {@options[key], value} # binary
+    # binary
+    defp encode_option({key, value}) when is_atom(key), do: {@options[key], value}
     defp encode_option({key, value}) when is_integer(key), do: {key, value}
 
     defp encode_block({number, more, size}) do
-      encode_block(number, (if more, do: 1, else: 0), trunc(:math.log2(size))-4)
+      encode_block(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
     end
+
     defp encode_block(number, more, extended_size) when number < 16 do
       <<number::size(4), more::size(1), extended_size::size(3)>>
     end
+
     defp encode_block(number, more, extended_size) when number < 4096 do
       <<number::size(12), more::size(1), extended_size::size(3)>>
     end
+
     defp encode_block(number, more, extended_size) do
       <<number::size(28), more::size(1), extended_size::size(3)>>
     end

@@ -27,7 +27,8 @@ defmodule CoAP.Phoenix.Conn do
       query_string: qs,
       req_headers: to_headers_list(headers),
       request_path: path,
-      scheme: "coap" # TODO: coaps
+      # TODO: coaps
+      scheme: "coap"
     }
   end
 
@@ -55,20 +56,16 @@ defmodule CoAP.Phoenix.Conn do
   end
 
   defp split_path(path) do
-    segments = :binary.split(path, "/", [:global])
-    # TODO: use enum reject?
-    for segment <- segments, segment != "", do: segment
+    path
+    |> :binary.split("/", [:global])
+    # Remove empty parts
+    |> Enum.filter(fn part -> part == "" end)
   end
 
-  defp to_headers_list(headers) when is_list(headers) do
-    headers
-  end
-
-  defp to_headers_list(headers) when is_map(headers) do
-    :maps.to_list(headers)
-  end
+  defp to_headers_list(headers) when is_list(headers), do: headers
+  defp to_headers_list(headers) when is_map(headers), do: :maps.to_list(headers)
 
   defp to_method_string(verb) when is_atom(verb) do
-    verb |> Atom.to_string |> String.upcase
+    verb |> Atom.to_string() |> String.upcase()
   end
 end
