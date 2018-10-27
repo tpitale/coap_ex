@@ -97,81 +97,64 @@ defmodule CoAP.Connection do
   # TODO: resend reset?
   defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
-  # con, request (server)
-  defp receive_message(%Message{method: method, type: :con} = message, %{phase: :idle} = state)
-       when is_atom(method) do
-    handle_request(message, state[:handler], peer_for(state))
-    await_app_ack(message, state)
-  end
-
-  # con, response (client)
-  defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    handle_response(message, state[:handler], peer_for(state))
-    await_app_ack(message, state)
-  end
-
-  defp receive_message(%Message{type: :reset} = message, %{phase: :sent_non} = state) do
-    handle_error(message, state[:handler], peer_for(state))
-
-    %{state | phase: :got_reset}
-  end
-
-  defp receive_message(%Message{type: :ack} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_ack(message, state[:handler], peer_for(state))
-
-    %{state | phase: :app_ack_sent}
-  end
-
-  defp receive_message(%Message{type: :reset} = message, %{phase: :awaiting_peer_ack} = state) do
-    handle_error(message, state[:handler], peer_for(state))
-
-    %{state | phase: :app_ack_sent}
-  end
-
-  defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-    handle_response(message, state[:handler], peer_for(state))
-
-    %{state | phase: :app_ack_sent}
-  end
-
+  # Do nothing if we receive a message from peer during these states
   defp receive_message(_message, %{phase: :awaiting_app_ack} = state), do: state
   defp receive_message(_message, %{phase: :app_ack_sent} = state), do: state
   defp receive_message(_message, %{phase: :got_reset} = state), do: state
 
+  # con, method, request (server)
+  # con, response (client)
+  defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
+    handle(message, state[:handler], peer_for(state))
+
+    await_app_ack(message, state)
+  end
+
+  # non, method, request (server)
+  # non, response (client)
+  defp receive_message(%Message{type: :non} = message, %{phase: :idle} = state) do
+    handle(message, state[:handler], peer_for(state))
+
+    %{state | phase: next_phase(:idle, :non, :in)}
+  end
+
+  # phase is :sent_non or :awaiting_peer_ack
+  defp receive_message(%Message{type: :reset} = _message, %{phase: phase} = state) do
+    send(state[:handler], :error)
+
+    %{state | phase: next_phase(phase, :reset)}
+  end
+
+  # ACK or response message
+  defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
+    handle(message, state[:handler], peer_for(state))
+
+    %{state | phase: next_phase(:awaiting_peer_ack, nil)}
+  end
+
+  # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
+  #   handle(:response, message, state[:handler], peer_for(state))
+  #
+  #   app_ack_sent(state)
+  # end
+
   # TODO: receive_message(:error) from decoding error
 
-  # non, request (server)
-  defp receive_message(%Message{method: method, type: :non} = message, state)
-       when is_atom(method) do
-    handle_request(message, state[:handler], peer_for(state))
-
-    %{state | phase: :got_non}
-  end
-
-  # non, response (client)
-  defp receive_message(%Message{type: :non} = message, state) do
-    handle_response(message, state[:handler], peer_for(state))
-
-    %{state | phase: :got_non}
-  end
-
   # DELIVER ====================================================================
-  defp deliver_message(%Message{type: :non} = message, %{phase: :idle} = state) do
-    # deliver message from client
-    reply(message, state)
-
-    %{state | phase: :sent_non}
-  end
-
-  defp deliver_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    # deliver message from client
-    reply(message, state)
-
-    %{state | phase: :awaiting_peer_ack, message: message}
-  end
-
+  # reply from app to peer
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
     send_peer_ack(message, state)
+  end
+
+  # send message to peer from client
+  defp deliver_message(%Message{type: type} = message, %{phase: :idle} = state) do
+    reply(message, state)
+
+    %{
+      state
+      | phase: next_phase(:idle, type, :out),
+        message: if(type == :con, do: message, else: nil)
+    }
   end
 
   # TIMEOUTS ===================================================================
@@ -179,7 +162,7 @@ defmodule CoAP.Connection do
     # send stored message
     reply(message, state)
 
-    %{state | phase: :peer_ack_sent}
+    %{state | phase: next_phase(:awaiting_app_ack, nil)}
   end
 
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
@@ -234,31 +217,30 @@ defmodule CoAP.Connection do
     %{state | phase: :peer_ack_sent, message: response, timer: nil}
   end
 
+  # phase, type
+  defp next_phase(:sent_non, :reset), do: :got_reset
+  defp next_phase(:awaiting_peer_ack, _), do: :app_ack_sent
+  defp next_phase(:awaiting_app_ack, nil), do: :peer_ack_sent
+  defp next_phase(:idle, :con, :out), do: :awaiting_peer_ack
+  defp next_phase(:idle, :non, :in), do: :got_non
+  defp next_phase(:idle, :non, :out), do: :sent_non
+
   # REQUEST ====================================================================
-  defp handle_request(message, handler, peer) do
-    # call the handler with the message and self()
-    send(handler, {:request, message, peer, self()})
+  defp handle(message, handler, peer) do
+    send(handler, {direction(message), message, peer, self()})
   end
 
-  # RESPONSE ===================================================================
-  defp handle_response(message, handler, peer) do
-    # call the handler with the message and self()
-    send(handler, {:response, message, peer, self()})
-  end
-
-  defp handle_ack(_message, handler, _peer) do
-    send(handler, :ack)
-  end
-
-  defp handle_error(_message, handler, _peer) do
-    send(handler, :error)
-  end
-
+  # RESPOND ====================================================================
   defp reply(message, %{server: server} = state) do
-    send(server, {:deliver, peer_for(state), message})
+    send(server, {:deliver, message, peer_for(state)})
   end
 
+  # HELPERS ====================================================================
   defp update_state_for_return(state, status), do: {status, state}
+
+  defp direction(%{type: :ack}), do: :ack
+  defp direction(%{method: nil}), do: :response
+  defp direction(%{method: m}) when is_atom(m), do: :request
 
   defp peer_for(%{ip: ip, port: port}), do: {ip, port}
 

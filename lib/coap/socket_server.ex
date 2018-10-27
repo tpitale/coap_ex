@@ -48,7 +48,7 @@ defmodule CoAP.SocketServer do
   end
 
   # TODO: accept data for replies
-  def handle_info({:deliver, peer, message}, %{socket: socket} = state) do
+  def handle_info({:deliver, message, peer}, %{socket: socket} = state) do
     data = Message.encode(message)
     {ip, port} = peer
 
