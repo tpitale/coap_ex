@@ -1,5 +1,5 @@
 defmodule CoAP.MessageOptions do
-  @payload_marker 0xFF
+  # @payload_marker 0xFF
 
   @doc """
 
@@ -54,34 +54,41 @@ defmodule CoAP.MessageOptions do
       case tail do
         <<value::binary-size(length), rest::binary>> ->
           decode(rest, key, append_option(CoAP.MessageOption.decode(key, value), option_list))
+
         <<>> ->
           decode(<<>>, key, append_option(CoAP.MessageOption.decode(key, <<>>), option_list))
       end
     end
 
     defp decode_extended(delta_sum, delta, length, tail) do
-      {tail1, key} = cond do
-        delta < 13 ->
-          {tail, delta_sum + delta}
-        delta == 13 ->
-          # TODO: size here `::size(4)`?
-          <<key, new_tail1::binary>> = tail
-          {new_tail1, delta_sum + key + 13}
-        delta == 14 ->
-          <<key::size(16), new_tail1::binary>> = tail
-          {new_tail1, delta_sum + key + 269}
+      {tail1, key} =
+        cond do
+          delta < 13 ->
+            {tail, delta_sum + delta}
+
+          delta == 13 ->
+            # TODO: size here `::size(4)`?
+            <<key, new_tail1::binary>> = tail
+            {new_tail1, delta_sum + key + 13}
+
+          delta == 14 ->
+            <<key::size(16), new_tail1::binary>> = tail
+            {new_tail1, delta_sum + key + 269}
         end
 
-      {tail2, option_length} = cond do
-        length < 13 ->
-          {tail1, length}
-        length == 13 ->
-          # TODO: size here `::size(4)`?
-          <<extended_option_length, new_tail2::binary>> = tail1
-          {new_tail2, extended_option_length + 13}
-        length == 14 ->
-          <<extended_option_length::size(16), new_tail2::binary>> = tail1
-          {new_tail2, extended_option_length + 269}
+      {tail2, option_length} =
+        cond do
+          length < 13 ->
+            {tail1, length}
+
+          length == 13 ->
+            # TODO: size here `::size(4)`?
+            <<extended_option_length, new_tail2::binary>> = tail1
+            {new_tail2, extended_option_length + 13}
+
+          length == 14 ->
+            <<extended_option_length::size(16), new_tail2::binary>> = tail1
+            {new_tail2, extended_option_length + 269}
         end
 
       {key, option_length, tail2}
@@ -93,7 +100,8 @@ defmodule CoAP.MessageOptions do
       case CoAP.MessageOption.repeatable?(key) do
         true ->
           # we must keep the order
-          [{key, values++[value]} | options];
+          [{key, values ++ [value]} | options]
+
         false ->
           throw({:error, "#{key} is not repeatable"})
       end
@@ -114,9 +122,9 @@ defmodule CoAP.MessageOptions do
 
     defp encode(options) when is_map(options) do
       options
-      |> Map.to_list
+      |> Map.to_list()
       |> Enum.map(&CoAP.MessageOption.encode/1)
-      |> List.flatten
+      |> List.flatten()
       |> sort
       |> encode(0, <<>>)
     end
@@ -137,23 +145,29 @@ defmodule CoAP.MessageOptions do
     # end
 
     defp encode([{key, value} | option_list], delta_sum, acc) do
-      {delta, extended_number} = cond do
-        key - delta_sum >= 269 ->
-          {14, <<(key - delta_sum - 269)::size(16)>>}
-        key - delta_sum >= 13 ->
-          {13, <<(key - delta_sum - 13)>>}
-        true ->
-          {key - delta_sum, <<>>}
-      end
+      {delta, extended_number} =
+        cond do
+          key - delta_sum >= 269 ->
+            {14, <<key - delta_sum - 269::size(16)>>}
 
-      {length, extended_length} = cond do
-        byte_size(value) >= 269 ->
-          {14, <<(byte_size(value) - 269)::size(16)>>}
-        byte_size(value) >= 13 ->
-          {13, <<(byte_size(value) - 13)>>}
-        true ->
-          {byte_size(value), <<>>}
-      end
+          key - delta_sum >= 13 ->
+            {13, <<key - delta_sum - 13>>}
+
+          true ->
+            {key - delta_sum, <<>>}
+        end
+
+      {length, extended_length} =
+        cond do
+          byte_size(value) >= 269 ->
+            {14, <<byte_size(value) - 269::size(16)>>}
+
+          byte_size(value) >= 13 ->
+            {13, <<byte_size(value) - 13>>}
+
+          true ->
+            {byte_size(value), <<>>}
+        end
 
       acc2 = <<
         acc::binary,
@@ -164,6 +178,7 @@ defmodule CoAP.MessageOptions do
         extended_length::binary,
         value::binary
       >>
+
       encode(option_list, key, acc2)
     end
 

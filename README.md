@@ -21,23 +21,7 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at [https://hexdocs.pm/coap](https://hexdocs.pm/coap).
 
-## Configuration
-
-In phoenix `mix.exs`:
-
-```
-config :my_app, MyApp.Coap.Endpoint,
-  http: false, https: false, server: false,
-  coap: [port: 5683]
-
-```
-
-In `lib/my_app.ex` add supervisor for the endpoint:
-
-```
-MyApp.Coap.Endpoint,
-{CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]}
-```
+## Setup
 
 Make a new router and endpoint:
 
@@ -54,9 +38,31 @@ defmodule MyApp.Coap.Endpoint do
 end
 ```
 
+In phoenix `config.exs`:
+
+```
+config :my_app, MyApp.Coap.Endpoint,
+  http: false, https: false, server: false,
+  coap: [port: 5683]
+
+```
+
+Add `:coap` to `extra_applications` config (also in `mix.exs`):
+
+```
+extra_applications: [:coap]
+```
+
+In `lib/my_app.ex` add supervisor and listener for the endpoint:
+
+```
+MyApp.Coap.Endpoint,
+{CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]}
+```
+
 # TODO:
 
-* [ ] handle multiple parts for some headers, like "Uri-Path"
+* [x] handle multiple parts for some headers, like "Uri-Path"
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
 * [ ] coap client, ala httpoison
