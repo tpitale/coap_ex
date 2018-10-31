@@ -63,9 +63,10 @@ MyApp.Coap.Endpoint,
 # TODO:
 
 * [x] handle multiple parts for some headers, like "Uri-Path"
+* [ ] coap client, ala httpoison
+* [ ] block transfer
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
-* [ ] coap client, ala httpoison
 
 `./coap-client.sh -m put coap://127.0.0.1/resource -e data`
 `nc -l 5683 -u | xxd`

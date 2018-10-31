@@ -1,7 +1,7 @@
 defmodule CoAP.SocketServer do
   use GenServer
 
-  import Logger, only: [info: 1]
+  import Logger, only: [debug: 1]
 
   alias CoAP.Message
 
@@ -11,19 +11,28 @@ defmodule CoAP.SocketServer do
 
   # init with port 5163/config (server), or 0 (client)
 
-  # endpoint => server or client
+  # endpoint => server
   def init([port, endpoint]) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
     {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}}}
   end
 
-  # def server?(pid), do: GenServer.call(pid, :server)
-  # def client?(pid), do: !server?(pid)
+  # Used by Connection to start a udp port
+  # endpoint => client
+  def init([endpoint, connection_id, connection]) do
+    {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
 
-  # def handle_call(:server, %{port: port} = state) do
-  #   {:reply, port > 0, state}
-  # end
+    {:ok,
+     %{port: 0, socket: socket, endpoint: endpoint, connections: %{connection_id => connection}}}
+  end
+
+  def server?(pid), do: GenServer.call(pid, :server)
+  def client?(pid), do: !server?(pid)
+
+  def handle_call(:server, %{port: port} = state) do
+    {:reply, port > 0, state}
+  end
 
   def handle_info(
         {:udp, _socket, peer_ip, peer_port, data},
@@ -33,7 +42,7 @@ defmodule CoAP.SocketServer do
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
-    info("#{inspect(connection_id)}")
+    debug("#{inspect(connection_id)}")
 
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
@@ -48,13 +57,12 @@ defmodule CoAP.SocketServer do
   end
 
   # TODO: accept data for replies
-  def handle_info({:deliver, message, peer}, %{socket: socket} = state) do
+  def handle_info({:deliver, message, {ip, port} = peer}, %{socket: socket} = state) do
     data = Message.encode(message)
-    {ip, port} = peer
 
-    info("Sending data: #{inspect(data)} to #{inspect(peer)}")
+    debug("Sending data: #{inspect(data)} to #{inspect(peer)}")
 
-    IO.inspect(:gen_udp.send(socket, ip, port, data))
+    :gen_udp.send(socket, ip, port, data)
 
     {:noreply, state}
   end
@@ -72,6 +80,7 @@ defmodule CoAP.SocketServer do
   #   token
   # end
 
+  # TODO: move to CoAP
   defp start_connection(server, endpoint, peer) do
     DynamicSupervisor.start_child(
       CoAP.ConnectionSupervisor,
