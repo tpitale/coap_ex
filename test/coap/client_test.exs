@@ -33,6 +33,7 @@ defmodule CoAP.ClientTest do
     # make a request with the client
     response = CoAP.Client.get("coap://127.0.0.1:#{@port}/api")
 
+    assert response.message_id > 0
     assert response.code_class == 2
     assert response.code_detail == 1
     assert response.payload == "Created"

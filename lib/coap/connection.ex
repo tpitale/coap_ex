@@ -18,6 +18,9 @@ defmodule CoAP.Connection do
   # @connection_timeout 247_000
   # @non_timeout 145_000
 
+  # 16 bit number
+  @max_message_id 65535
+
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
   # TODO: default adapter to GenericServer?
@@ -70,7 +73,8 @@ defmodule CoAP.Connection do
        message: <<>>,
        timer: nil,
        retries: @max_retries,
-       retry_timeout: 0
+       retry_timeout: 0,
+       next_message_id: next_message_id()
      }}
   end
 
@@ -165,13 +169,18 @@ defmodule CoAP.Connection do
   end
 
   # send message to peer from client
-  defp deliver_message(%Message{type: type} = message, %{phase: :idle} = state) do
-    reply(message, state)
+  defp deliver_message(
+         %Message{type: type} = message,
+         %{phase: :idle, next_message_id: message_id} = state
+       ) do
+    %{message | message_id: message_id}
+    |> reply(state)
 
     %{
       state
       | phase: next_phase(:idle, type, :out),
-        message: if(type == :con, do: message, else: nil)
+        message: if(type == :con, do: message, else: nil),
+        next_message_id: next_message_id(message_id)
     }
   end
 
@@ -271,6 +280,15 @@ defmodule CoAP.Connection do
     Process.cancel_timer(timer)
 
     start_timer(timeout)
+  end
+
+  defp next_message_id() do
+    :rand.seed(:exs1024)
+    :rand.uniform(@max_message_id)
+  end
+
+  defp next_message_id(id) when is_integer(id) do
+    if id < @max_message_id, do: id + 1, else: 1
   end
 
   # HANDLER
