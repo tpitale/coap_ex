@@ -38,4 +38,16 @@ defmodule CoAP.ClientTest do
     assert response.code_detail == 1
     assert response.payload == "Created"
   end
+
+  # test "post with big request payload" do
+  #   {:ok, _server} =
+  #     CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
+  #
+  #   # TODO: make this big
+  #   payload = <<>>
+  #
+  #   response = CoAP.Client.post("coap://127.0.0.1:#{@port}/api", payload)
+  #
+  #   assert response.payload == "Created"
+  # end
 end

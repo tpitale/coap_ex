@@ -33,6 +33,7 @@ defmodule CoAP.Connection do
   import Logger, only: [info: 1, debug: 1]
 
   alias CoAP.Message
+  alias CoAP.Payload
 
   # @ack_timeout 2000
   # ack_timeout*0.5
@@ -58,6 +59,7 @@ defmodule CoAP.Connection do
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
+  # TODO: predefined defaults, merged with client/server-specific options
   # TODO: default adapter to GenericServer?
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
     {:ok, handler} = start_handler(adapter, endpoint)
@@ -80,7 +82,8 @@ defmodule CoAP.Connection do
        # timer handling timeout
        timer: nil,
        retries: @max_retries,
-       retry_timeout: 0
+       retry_timeout: 0,
+       in_payload: nil
      }}
   end
 
@@ -112,6 +115,9 @@ defmodule CoAP.Connection do
        next_message_id: next_message_id()
      }}
   end
+
+  # Block1 option is for requests
+  # Block2 option is for responses
 
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
@@ -162,6 +168,25 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :app_ack_sent} = state), do: state
   defp receive_message(_message, %{phase: :sent_non} = state), do: state
   defp receive_message(_message, %{phase: :got_non} = state), do: state
+
+  # BLOCK-WISE TRANSFER
+  defp receive_message(%{multipart: {_num, true, _size}} = message, state) do
+    reply(Message.response_for({:ok, :continue}, message), state)
+
+    %{state | in_payload: Payload.add(state[:in_payload], message.payload)}
+  end
+
+  defp receive_message(%{multipart: {_num, false, _size}} = message, state) do
+    %{
+      message
+      | payload: Payload.to_binary(state[:in_payload]),
+        options: %{message.options | block1: nil},
+        multipart: nil
+    }
+    |> receive_message(state)
+
+    %{state | in_payload: nil}
+  end
 
   # con, method, request (server)
   # con, response (client)

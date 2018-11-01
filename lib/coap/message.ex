@@ -1,6 +1,8 @@
 defmodule CoAP.Message do
   @version 1
 
+  # @max_block_size 1024
+
   defstruct version: @version,
             type: :con,
             code_class: 0,
@@ -9,6 +11,7 @@ defmodule CoAP.Message do
             message_id: 1,
             token: <<0x01>>,
             options: %{},
+            multipart: nil,
             payload: <<>>
 
   @payload_marker 0xFF
@@ -48,7 +51,7 @@ defmodule CoAP.Message do
     {5, 04} => {:error, :gateway_timeout},
     {5, 05} => {:error, :proxying_not_supported}
   }
-  # @methods_map Enum.into(@methods, %{}, fn {k,v} -> {v,k} end)
+  @methods_map Enum.into(@methods, %{}, fn {k, v} -> {v, k} end)
 
   @types %{
     0 => :con,
@@ -124,6 +127,13 @@ defmodule CoAP.Message do
   defp encode_type(type) when is_atom(type), do: @types_map[type]
   defp decode_type(type) when is_integer(type), do: @types[type]
 
+  # set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->
+  #     set(BlockId, {Num, true, Size},
+  #         set_payload(binary:part(Content, Num*Size, Size), Msg));
+  # set_payload_block(Content, BlockId, {Num, _, Size}, Msg) ->
+  #     set(BlockId, {Num, false, Size},
+  #         set_payload(binary:part(Content, Num*Size, byte_size(Content)-Num*Size), Msg)).
+
   @doc """
   Decode binary coap message into a struct
 
@@ -143,6 +153,7 @@ defmodule CoAP.Message do
           uri_query: ["who=world"]
         },
         payload: "payload",
+        multipart: nil,
         method: :put
       }
 
@@ -164,6 +175,7 @@ defmodule CoAP.Message do
            uri_host: "localhost"
         },
         payload: "data",
+        multipart: nil,
         method: :get
       }
   """
@@ -184,6 +196,7 @@ defmodule CoAP.Message do
       message_id: message_id,
       token: token,
       options: options,
+      multipart: multipart(options),
       payload: payload
     }
   end
@@ -198,6 +211,24 @@ defmodule CoAP.Message do
   def encode_method(:post), do: {0, 02}
   def encode_method(:put), do: {0, 03}
   def encode_method(:delete), do: {0, 04}
+  def encode_method(method), do: @methods_map[method]
+
+  @doc """
+  Does this message contain a block1 or block2 option
+
+  Examples
+
+      iex> CoAP.Message.multipart(%{block1: {1, true, 1024}})
+      {1, true, 1024}
+
+      iex> CoAP.Message.multipart(%{block2: {3, false, 1024}})
+      {3, false, 1024}
+
+      iex> CoAP.Message.multipart(%{})
+      nil
+
+  """
+  def multipart(options), do: options[:block1] || options[:block2]
 
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil
@@ -218,7 +249,7 @@ defmodule CoAP.Message do
   end
 
   def response_for(method, message) do
-    %__MODULE__{response_for(message) | method: method}
+    %__MODULE__{response_for(message) | method: encode_method(method)}
   end
 
   def response_for({code_class, code_detail}, payload, message) do
