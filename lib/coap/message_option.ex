@@ -94,17 +94,17 @@ defmodule CoAP.MessageOption do
     defp decode_value(key, value) when key in @unsigned, do: :binary.decode_unsigned(value)
     defp decode_value(_key, value), do: value
 
-    defp decode_block(<<number::size(4), more::size(1), extended_size::size(3)>>),
-      do: decode_block(number, more, extended_size)
+    defp decode_block(<<number::size(4), more::size(1), size_exponent::size(3)>>),
+      do: decode_block(number, more, size_exponent)
 
-    defp decode_block(<<number::size(12), more::size(1), extended_size::size(3)>>),
-      do: decode_block(number, more, extended_size)
+    defp decode_block(<<number::size(12), more::size(1), size_exponent::size(3)>>),
+      do: decode_block(number, more, size_exponent)
 
-    defp decode_block(<<number::size(28), more::size(1), extended_size::size(3)>>),
-      do: decode_block(number, more, extended_size)
+    defp decode_block(<<number::size(28), more::size(1), size_exponent::size(3)>>),
+      do: decode_block(number, more, size_exponent)
 
-    defp decode_block(number, more, extended_size) do
-      {number, if(more == 0, do: false, else: true), trunc(:math.pow(2, extended_size + 4))}
+    defp decode_block(number, more, size_exponent) do
+      {number, if(more == 0, do: false, else: true), trunc(:math.pow(2, size_exponent + 4))}
     end
   end
 
@@ -182,16 +182,16 @@ defmodule CoAP.MessageOption do
       encode_block(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
     end
 
-    defp encode_block(number, more, extended_size) when number < 16 do
-      <<number::size(4), more::size(1), extended_size::size(3)>>
+    defp encode_block(number, more, size_exponent) when number < 16 do
+      <<number::size(4), more::size(1), size_exponent::size(3)>>
     end
 
-    defp encode_block(number, more, extended_size) when number < 4096 do
-      <<number::size(12), more::size(1), extended_size::size(3)>>
+    defp encode_block(number, more, size_exponent) when number < 4096 do
+      <<number::size(12), more::size(1), size_exponent::size(3)>>
     end
 
-    defp encode_block(number, more, extended_size) do
-      <<number::size(28), more::size(1), extended_size::size(3)>>
+    defp encode_block(number, more, size_exponent) do
+      <<number::size(28), more::size(1), size_exponent::size(3)>>
     end
   end
 end
