@@ -1,7 +1,7 @@
 defmodule CoAP.Phoenix.Listener do
   use GenServer
 
-  @adapter CoAP.Phoenix.Adapter
+  @adapter CoAP.Adapters.Phoenix
 
   import Logger, only: [info: 1]
 

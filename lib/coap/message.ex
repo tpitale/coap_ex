@@ -170,6 +170,11 @@ defmodule CoAP.Message do
     {code_class, code_detail |> Integer.undigits()}
   end
 
+  def encode_method(:get), do: {0, 01}
+  def encode_method(:post), do: {0, 02}
+  def encode_method(:put), do: {0, 03}
+  def encode_method(:delete), do: {0, 04}
+
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil
 

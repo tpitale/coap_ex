@@ -1,4 +1,4 @@
-defmodule CoAP.Phoenix.Adapter do
+defmodule CoAP.Adapters.Phoenix do
   @connection CoAP.Phoenix.Conn
 
   alias CoAP.Phoenix.Request

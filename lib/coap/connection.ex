@@ -4,7 +4,7 @@ defmodule CoAP.Connection do
   # use CoAP.Transport
   # use CoAP.Responder
 
-  import Logger, only: [info: 1]
+  import Logger, only: [info: 1, debug: 1]
 
   alias CoAP.Message
 
@@ -18,8 +18,12 @@ defmodule CoAP.Connection do
   # @connection_timeout 247_000
   # @non_timeout 145_000
 
+  # 16 bit number
+  @max_message_id 65535
+
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
+  # TODO: default adapter to GenericServer?
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
@@ -49,12 +53,30 @@ defmodule CoAP.Connection do
   # def init([server, endpoint, {ip, port, token} = _peer]) do
   # end
 
-  # def init(client) do
-  #   # TODO: make a new socket server with DynamicSupervisor
-  #   # client is the endpoint
-  #   # peer is the target ip/port?
-  #   {:ok, %{handler: start_handler(client)}}
-  # end
+  def init([client, {ip, port, token} = peer]) do
+    # TODO: make a new socket server with DynamicSupervisor
+    # client is the endpoint
+    # peer is the target ip/port?
+    endpoint = {CoAP.Adapters.Client, client}
+
+    {:ok, server} = start_socket_for(endpoint, peer)
+    {:ok, handler} = start_handler(endpoint)
+
+    {:ok,
+     %{
+       server: server,
+       handler: handler,
+       ip: ip,
+       port: port,
+       token: token,
+       phase: :idle,
+       message: <<>>,
+       timer: nil,
+       retries: @max_retries,
+       retry_timeout: 0,
+       next_message_id: next_message_id()
+     }}
+  end
 
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
@@ -147,13 +169,18 @@ defmodule CoAP.Connection do
   end
 
   # send message to peer from client
-  defp deliver_message(%Message{type: type} = message, %{phase: :idle} = state) do
-    reply(message, state)
+  defp deliver_message(
+         %Message{type: type} = message,
+         %{phase: :idle, next_message_id: message_id} = state
+       ) do
+    %{message | message_id: message_id}
+    |> reply(state)
 
     %{
       state
       | phase: next_phase(:idle, type, :out),
-        message: if(type == :con, do: message, else: nil)
+        message: if(type == :con, do: message, else: nil),
+        next_message_id: next_message_id(message_id)
     }
   end
 
@@ -210,7 +237,7 @@ defmodule CoAP.Connection do
     response =
       Message.response_for({message.code_class, message.code_detail}, message.payload, message)
 
-    info("Sending response: #{inspect(response)}")
+    debug("Sending response: #{inspect(response)}")
 
     reply(response, state)
 
@@ -255,13 +282,36 @@ defmodule CoAP.Connection do
     start_timer(timeout)
   end
 
+  defp next_message_id() do
+    :rand.seed(:exs1024)
+    :rand.uniform(@max_message_id)
+  end
+
+  defp next_message_id(id) when is_integer(id) do
+    if id < @max_message_id, do: id + 1, else: 1
+  end
+
   # HANDLER
+  # TODO: move to CoAP
+  defp start_handler({adapter, endpoint}), do: start_handler(adapter, endpoint)
+
   defp start_handler(adapter, endpoint) do
     DynamicSupervisor.start_child(
       CoAP.HandlerSupervisor,
       {
         CoAP.Handler,
         [adapter, endpoint]
+      }
+    )
+  end
+
+  # TODO: move to CoAP
+  defp start_socket_for(endpoint, peer) do
+    DynamicSupervisor.start_child(
+      CoAP.SocketServerSupervisor,
+      {
+        CoAP.SocketServer,
+        [endpoint, peer, self()]
       }
     )
   end
