@@ -70,6 +70,30 @@ defmodule CoAP.Message do
                             >>
                           end)
 
+  @doc """
+  Encode a Message struct as binary coap
+
+  Examples
+
+      iex> message = %CoAP.Message{
+      iex>   version: 1,
+      iex>   type: :con,
+      iex>   code_class: 0,
+      iex>   code_detail: 3,
+      iex>   message_id: 12796,
+      iex>   token: <<123, 92, 211, 222>>,
+      iex>   options: %{
+      iex>     uri_path: ["resource"],
+      iex>     uri_query: ["who=world"]
+      iex>   },
+      iex>   payload: "payload",
+      iex>   method: :put
+      iex> }
+      iex> CoAP.Message.encode(message)
+      <<0x44, 0x03, 0x31, 0xfc, 0x7b, 0x5c, 0xd3, 0xde, 0xb8, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49, 0x77, 0x68, 0x6f, 0x3d, 0x77, 0x6f, 0x72, 0x6c, 0x64, 0xff, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64>>
+
+  """
+
   def encode(%__MODULE__{
         version: version,
         type: type,
