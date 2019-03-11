@@ -27,7 +27,7 @@ defmodule CoAP.Phoenix.Listener do
   end
 
   # TODO: spec for this
-  def init([endpoint]) do
+  def init(endpoint) do
     # TODO: take this config and use it to start a CoAP.SocketServer
     config = endpoint.config(:coap)
 
