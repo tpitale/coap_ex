@@ -44,14 +44,21 @@ In phoenix `config.exs`:
 config :my_app, MyApp.Coap.Endpoint,
   http: false, https: false, server: false,
   coap: [port: 5683]
-
 ```
 
 In `lib/my_app.ex` add supervisor and listener for the endpoint:
 
 ```
-MyApp.Coap.Endpoint,
-{CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]}
+supervisor(MyApp.Coap.Endpoint),
+supervisor({CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]})
+```
+
+# Client #
+
+Simple client usage:
+
+```
+CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 ```
 
 # TODO:

@@ -31,7 +31,7 @@ defmodule CoAP.Phoenix.Listener do
     # TODO: take this config and use it to start a CoAP.SocketServer
     config = endpoint.config(:coap)
 
-    info("Starting Listener: #{inspect(config)}")
+    info("Starting CoAP.Phoenix.Listener: #{inspect(config)}")
 
     {:ok, server} = CoAP.SocketServer.start_link([config[:port], {@adapter, endpoint}])
     # TODO: ref and monitor?
