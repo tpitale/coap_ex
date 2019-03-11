@@ -30,7 +30,7 @@ defmodule CoAP.Adapters.Phoenix do
     # TODO: conn_from_message(message)
     %{path_info: path_info} = conn = @connection.conn(req)
 
-    case endpoint.__dispatch__(path_info, opts) do
+    case endpoint.__handler__(path_info, opts) do
       {:plug, handler, opts} ->
         %{adapter: {@connection, _req}} =
           conn
