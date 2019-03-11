@@ -27,6 +27,28 @@ defmodule CoAP.Connection do
 
   use GenServer
 
+  defmodule State do
+    @max_retries 4
+
+    # udp socket
+    defstruct server: nil,
+              # App
+              handler: nil,
+              # peer ip
+              ip: nil,
+              # peer port
+              port: nil,
+              # connection token
+              token: nil,
+              phase: :idle,
+              message: <<>>,
+              timer: nil,
+              retries: @max_retries,
+              retry_timeout: 0,
+              in_payload: CoAP.Payload.empty(),
+              next_message_id: nil
+  end
+
   # use CoAP.Transport
   # use CoAP.Responder
 
@@ -34,11 +56,12 @@ defmodule CoAP.Connection do
 
   alias CoAP.Message
   alias CoAP.Payload
+  # alias CoAP.Multipart
+  # alias CoAP.Block
 
   # @ack_timeout 2000
   # ack_timeout*0.5
   # @ack_random_factor 1000
-  @max_retries 4
 
   # standard allows 2000
   @processing_delay 1000
@@ -65,25 +88,12 @@ defmodule CoAP.Connection do
     {:ok, handler} = start_handler(adapter, endpoint)
 
     {:ok,
-     %{
-       # udp socket
+     %State{
        server: server,
-       # App
        handler: handler,
-       # peer ip
        ip: ip,
-       # peer port
        port: port,
-       # connection token
-       token: token,
-       phase: :idle,
-       # message sent at timeout
-       message: <<>>,
-       # timer handling timeout
-       timer: nil,
-       retries: @max_retries,
-       retry_timeout: 0,
-       in_payload: nil
+       token: token
      }}
   end
 
@@ -101,17 +111,12 @@ defmodule CoAP.Connection do
     {:ok, handler} = start_handler(endpoint)
 
     {:ok,
-     %{
+     %State{
        server: server,
        handler: handler,
        ip: ip,
        port: port,
        token: token,
-       phase: :idle,
-       message: <<>>,
-       timer: nil,
-       retries: @max_retries,
-       retry_timeout: 0,
        next_message_id: next_message_id()
      }}
   end
@@ -170,17 +175,23 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :got_non} = state), do: state
 
   # BLOCK-WISE TRANSFER
-  defp receive_message(%{multipart: {_num, true, _size}} = message, state) do
+  defp receive_message(%{multipart: %{more: true}} = message, state) do
     reply(Message.response_for({:ok, :continue}, message), state)
 
-    %{state | in_payload: Payload.add(state[:in_payload], message.payload)}
+    # TODO: do we care about size?
+    # TODO: what do we want to do with control
+
+    %{
+      state
+      | in_payload: Payload.add(state[:in_payload], message.multipart.number, message.payload)
+    }
   end
 
-  defp receive_message(%{multipart: {_num, false, _size}} = message, state) do
+  defp receive_message(%{multipart: %{more: false}} = message, state) do
     %{
       message
       | payload: Payload.to_binary(state[:in_payload]),
-        options: %{message.options | block1: nil},
+        options: %{message.options | block1: nil, block2: nil},
         multipart: nil
     }
     |> receive_message(state)

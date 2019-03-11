@@ -1,10 +1,13 @@
 defmodule CoAP.Message do
   @version 1
 
+  alias CoAP.Multipart
+
   # @max_block_size 1024
 
   defstruct version: @version,
             type: :con,
+            request: true,
             code_class: 0,
             code_detail: 0,
             method: nil,
@@ -164,6 +167,7 @@ defmodule CoAP.Message do
       %CoAP.Message{
         version: 1,
         type: :con,
+        request: true,
         code_class: 0,
         code_detail: 1,
         message_id: 1,
@@ -187,16 +191,19 @@ defmodule CoAP.Message do
 
     {options, payload} = CoAP.MessageOptions.decode(options_payload)
 
+    request = request?(code_class)
+
     %__MODULE__{
       version: version,
       type: decode_type(type),
+      request: request,
       method: method_for(code_class, code_detail),
       code_class: code_class,
       code_detail: code_detail,
       message_id: message_id,
       token: token,
       options: options,
-      multipart: multipart(options),
+      multipart: multipart(request, options),
       payload: payload
     }
   end
@@ -218,17 +225,23 @@ defmodule CoAP.Message do
 
   Examples
 
-      iex> CoAP.Message.multipart(%{block1: {1, true, 1024}})
-      {1, true, 1024}
-
-      iex> CoAP.Message.multipart(%{block2: {3, false, 1024}})
-      {3, false, 1024}
+      iex> CoAP.Message.multipart(%{block1: {1, true, 1024}, block2: {3, false, 1024}})
+      %CoAP.Multipart{
+        block1: %CoAP.Block{number: 1, more: true, size: 1024},
+        block2: %CoAP.Block{number: 3, more: false, size: 1024}
+      }
 
       iex> CoAP.Message.multipart(%{})
-      nil
+      %CoAP.Multipart{multipart: false}
 
   """
-  def multipart(options), do: options[:block1] || options[:block2]
+  # TODO: test if either block1 or block2 is nil
+  def multipart(request, options) do
+    Multipart.build(request, options[:block1], options[:block2])
+  end
+
+  defp request?(0), do: true
+  defp request?(_), do: false
 
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil

@@ -83,8 +83,8 @@ defmodule CoAP.MessageOption do
     defp decode_option(key, value) when is_atom(key), do: {key, decode_value(key, value)}
 
     defp decode_value(:if_none_match, <<>>), do: true
-    defp decode_value(:block1, value), do: decode_block(value)
-    defp decode_value(:block2, value), do: decode_block(value)
+    defp decode_value(:block1, value), do: CoAP.Block.decode(value)
+    defp decode_value(:block2, value), do: CoAP.Block.decode(value)
 
     defp decode_value(:content_format, value) do
       content_id = :binary.decode_unsigned(value)
@@ -93,19 +93,6 @@ defmodule CoAP.MessageOption do
 
     defp decode_value(key, value) when key in @unsigned, do: :binary.decode_unsigned(value)
     defp decode_value(_key, value), do: value
-
-    defp decode_block(<<number::size(4), more::size(1), size_exponent::size(3)>>),
-      do: decode_block(number, more, size_exponent)
-
-    defp decode_block(<<number::size(12), more::size(1), size_exponent::size(3)>>),
-      do: decode_block(number, more, size_exponent)
-
-    defp decode_block(<<number::size(28), more::size(1), size_exponent::size(3)>>),
-      do: decode_block(number, more, size_exponent)
-
-    defp decode_block(number, more, size_exponent) do
-      {number, if(more == 0, do: false, else: true), trunc(:math.pow(2, size_exponent + 4))}
-    end
   end
 
   defmodule Encoder do
@@ -159,8 +146,8 @@ defmodule CoAP.MessageOption do
     end
 
     # Encode special cases
-    defp encode_option({:block2, value}), do: {@options[:block2], encode_block(value)}
-    defp encode_option({:block1, value}), do: {@options[:block1], encode_block(value)}
+    defp encode_option({:block2, value}), do: {@options[:block2], CoAP.Block.encode(value)}
+    defp encode_option({:block1, value}), do: {@options[:block1], CoAP.Block.encode(value)}
     defp encode_option({:if_none_match, true}), do: {@options[:if_none_match], <<>>}
 
     defp encode_option({:content_format, value}) when is_binary(value) do
@@ -177,21 +164,5 @@ defmodule CoAP.MessageOption do
     # binary
     defp encode_option({key, value}) when is_atom(key), do: {@options[key], value}
     defp encode_option({key, value}) when is_integer(key), do: {key, value}
-
-    defp encode_block({number, more, size}) do
-      encode_block(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
-    end
-
-    defp encode_block(number, more, size_exponent) when number < 16 do
-      <<number::size(4), more::size(1), size_exponent::size(3)>>
-    end
-
-    defp encode_block(number, more, size_exponent) when number < 4096 do
-      <<number::size(12), more::size(1), size_exponent::size(3)>>
-    end
-
-    defp encode_block(number, more, size_exponent) do
-      <<number::size(28), more::size(1), size_exponent::size(3)>>
-    end
   end
 end
