@@ -3,7 +3,7 @@ defmodule Coap.MixProject do
 
   def project do
     [
-      app: :coap,
+      app: :coap_ex,
       version: "0.1.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,

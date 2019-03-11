@@ -47,12 +47,6 @@ config :my_app, MyApp.Coap.Endpoint,
 
 ```
 
-Add `:coap` to `extra_applications` config (also in `mix.exs`):
-
-```
-extra_applications: [:coap]
-```
-
 In `lib/my_app.ex` add supervisor and listener for the endpoint:
 
 ```
