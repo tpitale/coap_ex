@@ -33,7 +33,6 @@ defmodule CoAP.Client do
 
     ip = uri[:host] |> to_charlist
     port = uri[:port]
-
     token = :crypto.strong_rand_bytes(4)
 
     {code_class, code_detail} = Message.encode_method(method)
@@ -47,7 +46,7 @@ defmodule CoAP.Client do
       code_class: code_class,
       code_detail: code_detail,
       payload: content,
-      options: %{}
+      options: %{uri_path: String.split(uri[:path], "/")}
     }
 
     # TODO: peer = {ip, port, token} = Message.peer_from(message)

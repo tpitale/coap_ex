@@ -46,8 +46,12 @@ defmodule CoAP.SocketServer do
 
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
-    {:ok, connection} =
-      Map.get(connections, connection_id) || start_connection(self(), endpoint, connection_id)
+    connection =
+      case Map.get(connections, connection_id) ||
+             start_connection(self(), endpoint, connection_id) do
+        {:ok, conn} -> conn
+        conn -> conn
+      end
 
     # TODO: if it's alive?
     send(connection, {:receive, message})
@@ -80,13 +84,22 @@ defmodule CoAP.SocketServer do
   #   token
   # end
 
+  # TODO: Do we need to do this when using connection supervisor?
+  # TODO: Can we use this to remove dead connections?
+  def handle_info({:EXIT, from, reason}, state) do
+    debug("Received exit in CoAP.SocketServer from: #{inspect(from)}, with #{inspect(reason)}")
+
+    {:noreply, state}
+  end
+
   # TODO: move to CoAP
   defp start_connection(server, endpoint, peer) do
     DynamicSupervisor.start_child(
       CoAP.ConnectionSupervisor,
       {
         CoAP.Connection,
-        [server, endpoint, peer]
+        [server, endpoint, peer],
+        restart: :transient
       }
     )
   end
