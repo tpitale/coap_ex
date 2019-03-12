@@ -59,7 +59,7 @@ defmodule CoAP.Phoenix.Conn do
     path
     |> :binary.split("/", [:global])
     # Remove empty parts
-    |> Enum.filter(fn part -> part == "" end)
+    |> Enum.filter(fn part -> part != "" end)
   end
 
   defp to_headers_list(headers) when is_list(headers), do: headers

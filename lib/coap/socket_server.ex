@@ -46,8 +46,12 @@ defmodule CoAP.SocketServer do
 
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
-    {:ok, connection} =
-      Map.get(connections, connection_id) || start_connection(self(), endpoint, connection_id)
+    connection =
+      case Map.get(connections, connection_id) ||
+             start_connection(self(), endpoint, connection_id) do
+        {:ok, conn} -> conn
+        conn -> conn
+      end
 
     # TODO: if it's alive?
     send(connection, {:receive, message})
