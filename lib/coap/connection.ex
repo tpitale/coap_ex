@@ -47,6 +47,15 @@ defmodule CoAP.Connection do
   # 16 bit number
   @max_message_id 65535
 
+  def child_spec(server, endpoint, peer) do
+    %{
+      id: peer,
+      start: {__MODULE__, :start_link, [server, endpoint, peer]},
+      restart: :transient,
+      modules: [__MODULE__]
+    }
+  end
+
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
   # TODO: default adapter to GenericServer?

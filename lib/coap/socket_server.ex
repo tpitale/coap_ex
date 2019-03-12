@@ -98,8 +98,7 @@ defmodule CoAP.SocketServer do
       CoAP.ConnectionSupervisor,
       {
         CoAP.Connection,
-        [server, endpoint, peer],
-        restart: :transient
+        [server, endpoint, peer]
       }
     )
   end
