@@ -49,8 +49,10 @@ config :my_app, MyApp.Coap.Endpoint,
 In `lib/my_app.ex` add supervisor and listener for the endpoint:
 
 ```
-supervisor(MyApp.Coap.Endpoint),
-supervisor({CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]})
+children = [
+  MyApp.Coap.Endpoint,
+  {CoAP.Phoenix.Listener, [MyApp.Coap.Endpoint]}
+]
 ```
 
 # Client #
