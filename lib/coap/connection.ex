@@ -1,4 +1,30 @@
 defmodule CoAP.Connection do
+  @moduledoc """
+    Maintains a connection to a peer
+    Either as a server for each connection id {id,port,token} from a socket_server
+    Or as a client
+
+    Phases:
+    ----------------------------------------------------------------------------
+    | Server
+    |---------------------------------------------------------------------------
+    | idle -> [awaiting_app_ack,got_non,got_reset]
+    | awaiting_app_ack -> [peer_ack_sent]
+    | got_non -> ?
+    | peer_ack_sent -> ?
+    | got_reset -> ?
+    ----------------------------------------------------------------------------
+    ----------------------------------------------------------------------------
+    | Client
+    |---------------------------------------------------------------------------
+    | idle -> [sent_non,awaiting_peer_ack]
+    | sent_non -> [got_reset]
+    | awaiting_peer_ack -> [app_ack_sent,got_reset]
+    | app_ack_sent -> ?
+    | got_reset -> ?
+    ----------------------------------------------------------------------------
+  """
+
   use GenServer
 
   # use CoAP.Transport
@@ -84,18 +110,18 @@ defmodule CoAP.Connection do
 
     message
     |> receive_message(state)
-    |> update_state_for_return(:noreply)
+    |> state_for_return()
   end
 
   def handle_info({:deliver, %Message{} = message}, state) do
     message
     |> deliver_message(state)
-    |> update_state_for_return(:noreply)
+    |> state_for_return()
   end
 
   def handle_info(:timeout, state) do
     timeout(state)
-    |> update_state_for_return(:noreply)
+    |> state_for_return()
   end
 
   def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
@@ -119,10 +145,14 @@ defmodule CoAP.Connection do
   # TODO: resend reset?
   defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
-  # Do nothing if we receive a message from peer during these states
+  # Do nothing if we receive a message from peer during these states; we should be shutting down
   defp receive_message(_message, %{phase: :awaiting_app_ack} = state), do: state
-  defp receive_message(_message, %{phase: :app_ack_sent} = state), do: state
   defp receive_message(_message, %{phase: :got_reset} = state), do: state
+
+  # We should never reach here, the connection should be stopped
+  defp receive_message(_message, %{phase: :app_ack_sent} = state), do: state
+  defp receive_message(_message, %{phase: :sent_non} = state), do: state
+  defp receive_message(_message, %{phase: :got_non} = state), do: state
 
   # con, method, request (server)
   # con, response (client)
@@ -142,16 +172,21 @@ defmodule CoAP.Connection do
 
   # phase is :sent_non or :awaiting_peer_ack
   defp receive_message(%Message{type: :reset} = _message, %{phase: phase} = state) do
+    cancel_timer(state.timer)
+
     send(state[:handler], :error)
 
-    %{state | phase: next_phase(phase, :reset)}
+    %{state | phase: next_phase(phase, :reset), timer: nil}
   end
 
-  # ACK or response message
+  # ACK (as server, from client)
+  # Response (as client, from server) message
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
+    cancel_timer(state.timer)
+
     handle(message, state[:handler], peer_for(state))
 
-    %{state | phase: next_phase(:awaiting_peer_ack, nil)}
+    %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
   # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
@@ -234,8 +269,14 @@ defmodule CoAP.Connection do
   end
 
   defp send_peer_ack(message, state) do
+    cancel_timer(state.timer)
+
     response =
-      Message.response_for({message.code_class, message.code_detail}, message.payload, message)
+      Message.response_for(
+        {message.code_class, message.code_detail},
+        message.payload,
+        message
+      )
 
     debug("Sending response: #{inspect(response)}")
 
@@ -245,12 +286,12 @@ defmodule CoAP.Connection do
   end
 
   # phase, type
-  defp next_phase(:sent_non, :reset), do: :got_reset
+  defp next_phase(_phase, :reset), do: :got_reset
   defp next_phase(:awaiting_peer_ack, _), do: :app_ack_sent
   defp next_phase(:awaiting_app_ack, nil), do: :peer_ack_sent
   defp next_phase(:idle, :con, :out), do: :awaiting_peer_ack
-  defp next_phase(:idle, :non, :in), do: :got_non
   defp next_phase(:idle, :non, :out), do: :sent_non
+  defp next_phase(:idle, :non, :in), do: :got_non
 
   # REQUEST ====================================================================
   defp handle(message, handler, peer) do
@@ -263,7 +304,11 @@ defmodule CoAP.Connection do
   end
 
   # HELPERS ====================================================================
-  defp update_state_for_return(state, status), do: {status, state}
+  defp state_for_return(%{phase: :sent_non} = state), do: {:stop, :normal, state}
+  defp state_for_return(%{phase: :got_non} = state), do: {:stop, :normal, state}
+  defp state_for_return(%{phase: :app_ack_sent} = state), do: {:stop, :normal, state}
+  defp state_for_return(%{phase: :peer_ack_sent} = state), do: {:stop, :normal, state}
+  defp state_for_return(state), do: {:noreply, state}
 
   defp direction(%{type: :ack}), do: :ack
   defp direction(%{method: nil}), do: :response
@@ -274,10 +319,12 @@ defmodule CoAP.Connection do
   # TIMERS =====================================================================
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
+  defp cancel_timer(timer), do: Process.cancel_timer(timer)
+
   defp restart_timer(nil, timeout), do: start_timer(timeout)
 
   defp restart_timer(timer, timeout) do
-    Process.cancel_timer(timer)
+    cancel_timer(timer)
 
     start_timer(timeout)
   end
