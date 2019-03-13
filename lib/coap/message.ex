@@ -7,7 +7,7 @@ defmodule CoAP.Message do
 
   defstruct version: @version,
             type: :con,
-            request: true,
+            request: nil,
             code_class: 0,
             code_detail: 0,
             method: nil,
@@ -100,18 +100,22 @@ defmodule CoAP.Message do
 
   """
 
-  def encode(%__MODULE__{
-        version: version,
-        type: type,
-        code_class: code_class,
-        code_detail: code_detail,
-        message_id: message_id,
-        token: token,
-        # TODO: what if payload is <<>>/nil?
-        payload: payload,
-        options: options
-      }) do
+  def encode(
+        %__MODULE__{
+          version: version,
+          type: type,
+          code_class: code_class,
+          code_detail: code_detail,
+          message_id: message_id,
+          token: token,
+          # TODO: what if payload is <<>>/nil?
+          payload: payload,
+          options: options
+        } = message
+      ) do
     token_length = byte_size(token)
+
+    # IO.puts("encode: #{inspect(message)}")
 
     <<
       version::unsigned-integer-size(2),
@@ -147,6 +151,7 @@ defmodule CoAP.Message do
       %CoAP.Message{
         version: 1,
         type: :con,
+        request: true,
         code_class: 0,
         code_detail: 3,
         message_id: 12796,
@@ -156,7 +161,7 @@ defmodule CoAP.Message do
           uri_query: ["who=world"]
         },
         payload: "payload",
-        multipart: nil,
+        multipart: %CoAP.Multipart{control: %CoAP.Block{more: false, number: 0, size: 0}, description: %CoAP.Block{more: false, number: 0, size: 0}, more: false, multipart: false, number: 0},
         method: :put
       }
 
@@ -179,7 +184,7 @@ defmodule CoAP.Message do
            uri_host: "localhost"
         },
         payload: "data",
-        multipart: nil,
+        multipart: %CoAP.Multipart{control: %CoAP.Block{more: false, number: 0, size: 0}, description: %CoAP.Block{more: false, number: 0, size: 0}, more: false, multipart: false, number: 0},
         method: :get
       }
   """
@@ -225,13 +230,18 @@ defmodule CoAP.Message do
 
   Examples
 
-      iex> CoAP.Message.multipart(%{block1: {1, true, 1024}, block2: {3, false, 1024}})
+      iex> CoAP.Message.multipart(true, %{block1: {1, true, 1024}, block2: {0, false, 512}})
       %CoAP.Multipart{
-        block1: %CoAP.Block{number: 1, more: true, size: 1024},
-        block2: %CoAP.Block{number: 3, more: false, size: 1024}
+        description: %CoAP.Block{number: 1, more: true, size: 1024},
+        control: %CoAP.Block{number: 0, more: false, size: 512},
+        multipart: true,
+        more: true,
+        number: 1,
+        size: 1024,
+        requested_size: 512
       }
 
-      iex> CoAP.Message.multipart(%{})
+      iex> CoAP.Message.multipart(true, %{})
       %CoAP.Multipart{multipart: false}
 
   """

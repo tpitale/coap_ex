@@ -37,11 +37,9 @@ defmodule CoAP.Client do
 
     {code_class, code_detail} = Message.encode_method(method)
 
-    # TODO: message id and token?
     message = %Message{
       type: type,
       method: method,
-      message_id: 1,
       token: token,
       code_class: code_class,
       code_detail: code_detail,

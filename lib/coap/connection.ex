@@ -127,6 +127,7 @@ defmodule CoAP.Connection do
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
     # TODO: start timer for conn
+    # TODO: check if the message_id matches what we may have already sent?
 
     message
     |> receive_message(state)
@@ -178,20 +179,21 @@ defmodule CoAP.Connection do
   defp receive_message(%{multipart: %{more: true}} = message, state) do
     reply(Message.response_for({:ok, :continue}, message), state)
 
-    # TODO: do we care about size?
-    # TODO: what do we want to do with control
-
     %{
       state
-      | in_payload: Payload.add(state[:in_payload], message.multipart.number, message.payload)
+      | in_payload: Payload.add(state.in_payload, message.multipart.number, message.payload)
     }
   end
 
   defp receive_message(%{multipart: %{more: false}} = message, state) do
+    payload =
+      state.in_payload
+      |> Payload.add(message.multipart.number, message.payload)
+      |> Payload.to_binary()
+
     %{
       message
-      | payload: Payload.to_binary(state[:in_payload]),
-        options: %{message.options | block1: nil, block2: nil},
+      | payload: payload,
         multipart: nil
     }
     |> receive_message(state)
@@ -202,7 +204,7 @@ defmodule CoAP.Connection do
   # con, method, request (server)
   # con, response (client)
   defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     await_app_ack(message, state)
   end
@@ -210,7 +212,7 @@ defmodule CoAP.Connection do
   # non, method, request (server)
   # non, response (client)
   defp receive_message(%Message{type: :non} = message, %{phase: :idle} = state) do
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     %{state | phase: next_phase(:idle, :non, :in)}
   end
@@ -219,7 +221,7 @@ defmodule CoAP.Connection do
   defp receive_message(%Message{type: :reset} = _message, %{phase: phase} = state) do
     cancel_timer(state.timer)
 
-    send(state[:handler], :error)
+    send(state.handler, :error)
 
     %{state | phase: next_phase(phase, :reset), timer: nil}
   end
@@ -229,13 +231,13 @@ defmodule CoAP.Connection do
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
     cancel_timer(state.timer)
 
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
   # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-  #   handle(:response, message, state[:handler], peer_for(state))
+  #   handle(:response, message, state.handler, peer_for(state))
   #
   #   app_ack_sent(state)
   # end
@@ -249,18 +251,20 @@ defmodule CoAP.Connection do
   end
 
   # send message to peer from client
+  # The client should not send a message id, that is managed by the connection
   defp deliver_message(
-         %Message{type: type} = message,
-         %{phase: :idle, next_message_id: message_id} = state
+         %Message{type: type, message_id: message_id} = message,
+         %{phase: :idle, next_message_id: next_message_id} = state
        ) do
-    %{message | message_id: message_id}
+    # The server should send back the same message id of the request
+    %{message | message_id: message_id || next_message_id}
     |> reply(state)
 
     %{
       state
       | phase: next_phase(:idle, type, :out),
         message: if(type == :con, do: message, else: nil),
-        next_message_id: next_message_id(message_id)
+        next_message_id: next_message_id(next_message_id)
     }
   end
 
@@ -308,7 +312,7 @@ defmodule CoAP.Connection do
   defp await_app_ack(message, state) do
     # ready for APP timeout
     cached_response = Message.response_for(message)
-    timer = restart_timer(state[:timer], @processing_delay)
+    timer = restart_timer(state.timer, @processing_delay)
 
     %{state | phase: :awaiting_app_ack, message: cached_response, timer: timer}
   end
@@ -378,6 +382,9 @@ defmodule CoAP.Connection do
     :rand.seed(:exs1024)
     :rand.uniform(@max_message_id)
   end
+
+  # The server does not need to track message_id, just mirror the request
+  defp next_message_id(nil), do: nil
 
   defp next_message_id(id) when is_integer(id) do
     if id < @max_message_id, do: id + 1, else: 1

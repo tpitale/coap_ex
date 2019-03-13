@@ -12,35 +12,35 @@ defmodule CoAP.Multipart do
   alias CoAP.Block
 
   # TODO: redefine as description/control based on request/response
-  defstruct multipart: false, description: %Block{}, control: %Block{}, more: false, number: 0
+  defstruct multipart: false,
+            description: %Block{},
+            control: %Block{},
+            more: false,
+            number: 0,
+            size: 0,
+            requested_size: 0
 
   def build(_request, nil, nil), do: %__MODULE__{}
 
   # Request variation
   def build(true, block1, block2) do
-    description = Block.build(block1)
-    control = Block.build(block2)
-
-    %__MODULE__{
-      multipart: true,
-      description: description,
-      control: control,
-      more: description.more,
-      number: description.number
-    }
+    build(Block.build(block1), Block.build(block2))
   end
 
   # Response variation
   def build(false, block1, block2) do
-    control = Block.build(block1)
-    description = Block.build(block2)
+    build(Block.build(block2), Block.build(block1))
+  end
 
+  def build(%Block{} = description, %Block{} = control) do
     %__MODULE__{
       multipart: true,
       description: description,
       control: control,
       more: description.more,
-      number: description.number
+      number: description.number,
+      size: description.size,
+      requested_size: control.size
     }
   end
 end

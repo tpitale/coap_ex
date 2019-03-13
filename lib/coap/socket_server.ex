@@ -42,7 +42,8 @@ defmodule CoAP.SocketServer do
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
-    debug("#{inspect(connection_id)}")
+    # debug("#{inspect(connection_id)}")
+    # debug("received: #{inspect(data)}")
 
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?

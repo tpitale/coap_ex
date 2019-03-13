@@ -10,7 +10,6 @@ defmodule CoAP.ClientTest do
     def request(message) do
       # path should have api in it
       # params should be empty
-      # IO.inspect(message)
 
       %Message{
         type: :con,
