@@ -2,4 +2,5 @@
   "gen_coap": {:git, "https://github.com/gotthardp/gen_coap.git", "245e2205cf233e94e2d481f6ddda5da038ebc6ea", []},
   "mime": {:hex, :mime, "1.3.0", "5e8d45a39e95c650900d03f897fbf99ae04f60ab1daa4a34c7a20a5151b7a5fe", [:mix], [], "hexpm"},
   "plug": {:hex, :plug, "1.6.2", "e06a7bd2bb6de5145da0dd950070110dce88045351224bd98e84edfdaaf5ffee", [:mix], [{:cowboy, "~> 1.0.1 or ~> 1.1 or ~> 2.4", [hex: :cowboy, repo: "hexpm", optional: true]}, {:mime, "~> 1.0", [hex: :mime, repo: "hexpm", optional: false]}], "hexpm"},
+  "stream_data": {:hex, :stream_data, "0.4.2", "fa86b78c88ec4eaa482c0891350fcc23f19a79059a687760ddcf8680aac2799b", [:mix], [], "hexpm"},
 }

@@ -23,7 +23,8 @@ defmodule Coap.MixProject do
   defp deps do
     [
       {:plug, "~> 1.0"},
-      {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]}
+      {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]},
+      {:stream_data, "~> 0.1", only: :test}
     ]
   end
 end
