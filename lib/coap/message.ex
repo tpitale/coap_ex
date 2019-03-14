@@ -204,7 +204,7 @@ defmodule CoAP.Message do
 
   def response_for(%__MODULE__{type: :con} = message) do
     %__MODULE__{
-      type: :con,
+      type: :ack,
       message_id: message.message_id,
       token: message.token
     }
