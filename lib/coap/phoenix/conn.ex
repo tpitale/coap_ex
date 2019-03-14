@@ -12,7 +12,8 @@ defmodule CoAP.Phoenix.Conn do
       headers: headers,
       qs: qs,
       peer: {remote_ip, _},
-      owner: owner
+      owner: owner,
+      message: message
     } = req
 
     # Must be Plug.Conn for Phoenix to use it
@@ -53,6 +54,10 @@ defmodule CoAP.Phoenix.Conn do
     send(connection, {:deliver, result})
 
     {:ok, nil, req}
+  end
+
+  def read_req_body(state, opts) do
+    {:ok, state[:message].payload, state}
   end
 
   defp split_path(path) do
