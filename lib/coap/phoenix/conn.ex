@@ -12,8 +12,7 @@ defmodule CoAP.Phoenix.Conn do
       headers: headers,
       qs: qs,
       peer: {remote_ip, _},
-      owner: owner,
-      message: message
+      owner: owner
     } = req
 
     # Must be Plug.Conn for Phoenix to use it
@@ -33,8 +32,8 @@ defmodule CoAP.Phoenix.Conn do
     }
   end
 
-  def send_resp(req, status, headers, body) do
-    IO.puts("#{inspect(req)} returns #{inspect(status)}, #{inspect(headers)}, #{inspect(body)}")
+  def send_resp(req, status, _headers, body) do
+    # IO.puts("#{inspect(req)} returns #{inspect(status)}, #{inspect(headers)}, #{inspect(body)}")
 
     message = req.message
     connection = req.owner
@@ -56,7 +55,7 @@ defmodule CoAP.Phoenix.Conn do
     {:ok, nil, req}
   end
 
-  def read_req_body(state, opts) do
+  def read_req_body(state, _opts) do
     {:ok, state[:message].payload, state}
   end
 
