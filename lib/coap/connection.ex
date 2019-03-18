@@ -46,6 +46,7 @@ defmodule CoAP.Connection do
               retries: @max_retries,
               retry_timeout: 0,
               in_payload: CoAP.Payload.empty(),
+              out_payload: CoAP.Payload.empty(),
               next_message_id: nil
   end
 
@@ -56,10 +57,12 @@ defmodule CoAP.Connection do
 
   alias CoAP.Message
   alias CoAP.Payload
-  # alias CoAP.Multipart
-  # alias CoAP.Block
+  alias CoAP.Multipart
+  alias CoAP.Block
 
-  # @ack_timeout 2000
+  @default_payload_size 512
+
+  @ack_timeout 2000
   # ack_timeout*0.5
   # @ack_random_factor 1000
 
@@ -226,6 +229,26 @@ defmodule CoAP.Connection do
     %{state | phase: next_phase(phase, :reset), timer: nil}
   end
 
+  # TODO: when we receive message, how do we know it's :ok, :continue?
+  defp receive_message(
+         %{status: {:ok, :continue}} = message,
+         %{phase: :awaiting_peer_ack, out_payload: payload} = state
+       ) do
+    # Send the next portion of the payload
+    restart_timer(state.timer, @ack_timeout)
+
+    {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
+
+    # TODO: allow configurable control size for next block
+    %Multipart{description: block, control: Block.control(block.size)}
+
+    %{message | payload: bytes, options: %{block1: block}}
+    |> reply(state)
+
+    # TODO: do we remain in :awaiting_peer_ack
+    %{state | out_payload: next_payload}
+  end
+
   # ACK (as server, from client)
   # Response (as client, from server) message
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
@@ -256,15 +279,26 @@ defmodule CoAP.Connection do
          %Message{type: type, message_id: message_id} = message,
          %{phase: :idle, next_message_id: next_message_id} = state
        ) do
+    {data, block, payload} = Payload.next_segment(message.payload, @default_payload_size)
+
+    # TODO: allow control over the block size
+    multipart = %Multipart{description: block, control: Block.control(block.size)}
+
     # The server should send back the same message id of the request
-    %{message | message_id: message_id || next_message_id}
+    %{
+      message
+      | message_id: message_id || next_message_id,
+        payload: data,
+        multipart: multipart
+    }
     |> reply(state)
 
     %{
       state
       | phase: next_phase(:idle, type, :out),
         message: if(type == :con, do: message, else: nil),
-        next_message_id: next_message_id(next_message_id)
+        next_message_id: next_message_id(next_message_id),
+        out_payload: payload
     }
   end
 

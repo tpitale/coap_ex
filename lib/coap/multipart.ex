@@ -43,4 +43,18 @@ defmodule CoAP.Multipart do
       requested_size: control.size
     }
   end
+
+  def as_blocks(true, multipart) do
+    %{
+      block1: multipart.description |> Block.to_tuple(),
+      block2: multipart.control |> Block.to_tuple()
+    }
+  end
+
+  def as_blocks(nil, multipart) do
+    %{
+      block1: multipart.control |> Block.to_tuple(),
+      block2: multipart.description |> Block.to_tuple()
+    }
+  end
 end

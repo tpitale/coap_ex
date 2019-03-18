@@ -11,13 +11,19 @@ defmodule CoAP.ClientTest do
       # path should have api in it
       # params should be empty
 
+      response =
+        case message.payload do
+          data when byte_size(data) > 0 -> data
+          _ -> "Created"
+        end
+
       %Message{
         type: :con,
         code_class: 2,
         code_detail: 1,
         message_id: message.message_id,
         token: message.token,
-        payload: "Created"
+        payload: response
       }
     end
   end
@@ -38,15 +44,14 @@ defmodule CoAP.ClientTest do
     assert response.payload == "Created"
   end
 
-  # test "post with big request payload" do
-  #   {:ok, _server} =
-  #     CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
-  #
-  #   # TODO: make this big
-  #   payload = <<>>
-  #
-  #   response = CoAP.Client.post("coap://127.0.0.1:#{@port}/api", payload)
-  #
-  #   assert response.payload == "Created"
-  # end
+  test "post with big request payload" do
+    {:ok, _server} =
+      CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
+
+    payload = StreamData.string(:alphanumeric) |> Enum.take(2048) |> :binary.list_to_bin()
+
+    response = CoAP.Client.post("coap://127.0.0.1:#{@port}/api", payload)
+
+    assert response.payload == :binary.part(payload, 0, 512)
+  end
 end

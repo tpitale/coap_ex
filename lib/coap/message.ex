@@ -11,6 +11,7 @@ defmodule CoAP.Message do
             code_class: 0,
             code_detail: 0,
             method: nil,
+            status: nil,
             message_id: 1,
             token: <<0x01>>,
             options: %{},
@@ -99,23 +100,27 @@ defmodule CoAP.Message do
       <<0x44, 0x03, 0x31, 0xfc, 0x7b, 0x5c, 0xd3, 0xde, 0xb8, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49, 0x77, 0x68, 0x6f, 0x3d, 0x77, 0x6f, 0x72, 0x6c, 0x64, 0xff, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64>>
 
   """
+  def encode(%__MODULE__{multipart: %Multipart{}} = message) do
+    blocks = Multipart.as_blocks(message.request, message.multipart)
 
-  def encode(
-        %__MODULE__{
-          version: version,
-          type: type,
-          code_class: code_class,
-          code_detail: code_detail,
-          message_id: message_id,
-          token: token,
-          # TODO: what if payload is <<>>/nil?
-          payload: payload,
-          options: options
-        } = message
-      ) do
+    %{message | options: Map.merge(message.options, blocks), multipart: nil}
+    |> encode()
+  end
+
+  def encode(%__MODULE__{
+        version: version,
+        type: type,
+        code_class: code_class,
+        code_detail: code_detail,
+        message_id: message_id,
+        token: token,
+        payload: payload,
+        options: options
+      }) do
     token_length = byte_size(token)
 
-    # IO.puts("encode: #{inspect(message)}")
+    # ensure at least an empty binary
+    payload = payload || <<>>
 
     <<
       version::unsigned-integer-size(2),
@@ -203,6 +208,7 @@ defmodule CoAP.Message do
       type: decode_type(type),
       request: request,
       method: method_for(code_class, code_detail),
+      status: status_for(code_class, code_detail),
       code_class: code_class,
       code_detail: code_detail,
       message_id: message_id,
@@ -219,10 +225,6 @@ defmodule CoAP.Message do
     {code_class, code_detail |> Integer.undigits()}
   end
 
-  def encode_method(:get), do: {0, 01}
-  def encode_method(:post), do: {0, 02}
-  def encode_method(:put), do: {0, 03}
-  def encode_method(:delete), do: {0, 04}
   def encode_method(method), do: @methods_map[method]
 
   @doc """
@@ -256,6 +258,9 @@ defmodule CoAP.Message do
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
   defp method_for(_code_class, _code_detail), do: nil
 
+  defp status_for(0, _code_detail), do: nil
+  defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
+
   def response_for(%__MODULE__{type: :con} = message) do
     %__MODULE__{
       type: :con,
@@ -272,7 +277,9 @@ defmodule CoAP.Message do
   end
 
   def response_for(method, message) do
-    %__MODULE__{response_for(message) | method: encode_method(method)}
+    {code_class, code_detail} = encode_method(method)
+
+    %__MODULE__{response_for(message) | code_class: code_class, code_detail: code_detail}
   end
 
   def response_for({code_class, code_detail}, payload, message) do

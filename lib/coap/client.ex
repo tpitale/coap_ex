@@ -5,23 +5,15 @@ defmodule CoAP.Client do
 
   # TODO: options: headers/params?
 
-  def get(url) do
-    con(:get, url)
-  end
-
-  def post(url) do
-    con(:post, url)
-  end
-
-  def put(url) do
-    con(:put, url)
-  end
-
-  def delete(url) do
-    con(:delete, url)
-  end
+  def get(url), do: con(:get, url)
+  def post(url), do: con(:post, url)
+  def post(url, content), do: con(:post, url, content)
+  def put(url), do: con(:put, url)
+  def put(url, content), do: con(:put, url, content)
+  def delete(url), do: con(:delete, url)
 
   defp con(method, url), do: request(:con, method, url)
+  defp con(method, url, content), do: request(:con, method, url, content)
   # defp non(method, url), do: request(:non, method, url)
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)

@@ -1,6 +1,8 @@
 defmodule CoAP.Payload do
   defstruct segments: [], multipart: false, data: <<>>, offset: 0
 
+  alias CoAP.Block
+
   def empty(), do: %__MODULE__{}
 
   def add(nil, segment) do
@@ -34,17 +36,38 @@ defmodule CoAP.Payload do
 
       iex> data = StreamData.string(:alphanumeric) |> Enum.take(2048) |> :binary.list_to_bin
       iex> payload = %CoAP.Payload{offset: 1024, data: data}
-      iex> {_bytes, number, next_payload} = payload |> CoAP.Payload.next_segment(256)
-      iex> {number, next_payload.offset}
-      {4, 1280}
+      iex> {_bytes, block, next_payload} = payload |> CoAP.Payload.next_segment(256)
+      iex> {block, next_payload.offset, next_payload.multipart}
+      {%CoAP.Block{number: 4, more: true, size: 256}, 1280, true}
+
+      iex> data = <<>>
+      iex> payload = %CoAP.Payload{offset: 0, data: data}
+      iex> payload |> CoAP.Payload.next_segment(256)
+      {
+        <<>>,
+        %CoAP.Block{number: 0, more: false, size: 256},
+        %CoAP.Payload{data: <<>>, offset: 0, segments: [], multipart: false}
+      }
 
   """
+  def next_segment(data, size) when is_binary(data) do
+    %__MODULE__{data: data, offset: 0} |> next_segment(size)
+  end
+
+  def next_segment(%__MODULE__{data: <<>>}, size),
+    do: {<<>>, Block.build({0, false, size}), %__MODULE__{}}
+
   def next_segment(%__MODULE__{data: data, offset: offset} = payload, size) do
+    data_size = byte_size(data)
     number = (offset / size) |> round
+    new_offset = offset + Enum.min([size, data_size])
+    more = data_size > new_offset
 
     # TODO: splits into the appropriate segment
-    bytes = data |> :binary.part(offset, offset + size)
+    bytes = data |> :binary.part(offset, new_offset)
 
-    {bytes, number, %{payload | offset: offset + size}}
+    block = Block.build({number, more, size})
+
+    {bytes, block, %{payload | offset: new_offset, multipart: more}}
   end
 end

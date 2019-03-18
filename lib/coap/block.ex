@@ -7,6 +7,11 @@ defmodule CoAP.Block do
     %__MODULE__{number: number, more: more, size: size}
   end
 
+  def control(size), do: %__MODULE__{size: size}
+
+  def to_tuple(%__MODULE__{} = block), do: {block.number, block.more, block.size}
+  def to_tuple(block) when is_tuple(block), do: block
+
   def decode(<<number::size(4), more::size(1), size_exponent::size(3)>>),
     do: decode(number, more, size_exponent)
 
@@ -25,6 +30,7 @@ defmodule CoAP.Block do
   end
 
   def encode(%__MODULE__{} = block), do: encode({block.number, block.more, block.size})
+  def encode(%{number: number, more: more, size: size}), do: encode({number, more, size})
 
   def encode({number, more, size}) do
     encode(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
