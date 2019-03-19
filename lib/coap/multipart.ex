@@ -44,6 +44,8 @@ defmodule CoAP.Multipart do
     }
   end
 
+  def as_blocks(request \\ false, multipart)
+
   def as_blocks(true, multipart) do
     %{
       block1: multipart.description |> Block.to_tuple(),
@@ -51,7 +53,7 @@ defmodule CoAP.Multipart do
     }
   end
 
-  def as_blocks(nil, multipart) do
+  def as_blocks(_request, multipart) do
     %{
       block1: multipart.control |> Block.to_tuple(),
       block2: multipart.description |> Block.to_tuple()

@@ -1,6 +1,8 @@
 defmodule CoAP.Message do
   @version 1
 
+  import Logger, only: [debug: 1]
+
   alias CoAP.Multipart
 
   # @max_block_size 1024
@@ -101,6 +103,7 @@ defmodule CoAP.Message do
 
   """
   def encode(%__MODULE__{multipart: %Multipart{}} = message) do
+    debug("Message is a request? #{message.request}")
     blocks = Multipart.as_blocks(message.request, message.multipart)
 
     %{message | options: Map.merge(message.options, blocks), multipart: nil}

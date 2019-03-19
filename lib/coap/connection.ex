@@ -179,7 +179,8 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :got_non} = state), do: state
 
   # BLOCK-WISE TRANSFER
-  defp receive_message(%{multipart: %{more: true}} = message, state) do
+  defp receive_message(%{multipart: %{multipart: true, more: true}} = message, state) do
+    debug("Part, with more: #{inspect(message)}")
     reply(Message.response_for({:ok, :continue}, message), state)
 
     %{
@@ -188,7 +189,9 @@ defmodule CoAP.Connection do
     }
   end
 
-  defp receive_message(%{multipart: %{more: false}} = message, state) do
+  defp receive_message(%{multipart: %{multipart: true, more: false}} = message, state) do
+    debug("Last Part: #{inspect(message)}")
+
     payload =
       state.in_payload
       |> Payload.add(message.multipart.number, message.payload)
@@ -202,6 +205,27 @@ defmodule CoAP.Connection do
     |> receive_message(state)
 
     %{state | in_payload: nil}
+  end
+
+  defp receive_message(
+         %{status: {:ok, :continue}},
+         %{phase: :awaiting_peer_ack, out_payload: payload, message: message} = state
+       ) do
+    # Send the next portion of the payload
+    restart_timer(state.timer, @ack_timeout)
+
+    {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
+
+    debug("Continuing with next block: #{inspect(block)}")
+
+    # TODO: allow configurable control size for next block
+    multipart = %Multipart{description: block, control: Block.control(block.size)}
+
+    %{message | payload: bytes, multipart: multipart}
+    |> reply(state)
+
+    # TODO: do we remain in :awaiting_peer_ack?
+    %{state | out_payload: next_payload}
   end
 
   # con, method, request (server)
@@ -227,26 +251,6 @@ defmodule CoAP.Connection do
     send(state.handler, :error)
 
     %{state | phase: next_phase(phase, :reset), timer: nil}
-  end
-
-  # TODO: when we receive message, how do we know it's :ok, :continue?
-  defp receive_message(
-         %{status: {:ok, :continue}} = message,
-         %{phase: :awaiting_peer_ack, out_payload: payload} = state
-       ) do
-    # Send the next portion of the payload
-    restart_timer(state.timer, @ack_timeout)
-
-    {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
-
-    # TODO: allow configurable control size for next block
-    %Multipart{description: block, control: Block.control(block.size)}
-
-    %{message | payload: bytes, options: %{block1: block}}
-    |> reply(state)
-
-    # TODO: do we remain in :awaiting_peer_ack
-    %{state | out_payload: next_payload}
   end
 
   # ACK (as server, from client)
@@ -361,7 +365,7 @@ defmodule CoAP.Connection do
         message
       )
 
-    debug("Sending response: #{inspect(response)}")
+    # debug("Sending response: #{inspect(response)}")
 
     reply(response, state)
 

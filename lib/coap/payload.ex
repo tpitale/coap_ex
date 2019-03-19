@@ -1,6 +1,8 @@
 defmodule CoAP.Payload do
   defstruct segments: [], multipart: false, data: <<>>, offset: 0
 
+  import Logger, only: [debug: 1]
+
   alias CoAP.Block
 
   def empty(), do: %__MODULE__{}
@@ -60,14 +62,15 @@ defmodule CoAP.Payload do
   def next_segment(%__MODULE__{data: data, offset: offset} = payload, size) do
     data_size = byte_size(data)
     number = (offset / size) |> round
-    new_offset = offset + Enum.min([size, data_size])
+    part_size = Enum.min([data_size - offset, size])
+    new_offset = offset + part_size
     more = data_size > new_offset
 
     # TODO: splits into the appropriate segment
-    bytes = data |> :binary.part(offset, new_offset)
+    data = data |> :binary.part(offset, part_size)
 
     block = Block.build({number, more, size})
 
-    {bytes, block, %{payload | offset: new_offset, multipart: more}}
+    {data, block, %{payload | offset: new_offset, multipart: more}}
   end
 end
