@@ -3,8 +3,6 @@ defmodule CoAP.Adapters.Phoenix do
 
   alias CoAP.Phoenix.Request
 
-  # import Logger, only: [info: 1]
-
   @moduledoc """
   1. Take a message
   2. Convert to Plug.Conn

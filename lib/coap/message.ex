@@ -1,8 +1,6 @@
 defmodule CoAP.Message do
   @version 1
 
-  import Logger, only: [debug: 1]
-
   alias CoAP.Multipart
 
   # @max_block_size 1024
@@ -103,9 +101,6 @@ defmodule CoAP.Message do
 
   """
   def encode(%__MODULE__{multipart: %Multipart{}} = message) do
-    # debug("multipart message is a request? #{message.request || false}")
-    # debug("multipart message is a request(code_detail)? #{request?(message.code_class) || false}")
-
     # Always check code_detail in case the message was made directly, not decoded
     blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
 

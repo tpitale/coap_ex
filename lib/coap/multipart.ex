@@ -47,8 +47,6 @@ defmodule CoAP.Multipart do
   end
 
   def as_blocks(true, multipart) do
-    # debug("Encoding multipart as tuples for request: #{inspect(multipart)}")
-
     %{
       block1: multipart.description |> Block.to_tuple(),
       block2: multipart.control |> Block.to_tuple()
@@ -57,8 +55,6 @@ defmodule CoAP.Multipart do
 
   # TODO: if we get nil here, that's wrong
   def as_blocks(false, multipart) do
-    # debug("Encoding multipart as tuples for response: #{inspect(multipart)}")
-
     %{
       block1: multipart.control |> Block.to_tuple(),
       block2: multipart.description |> Block.to_tuple()

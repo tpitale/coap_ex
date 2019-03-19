@@ -53,7 +53,7 @@ defmodule CoAP.Connection do
   # use CoAP.Transport
   # use CoAP.Responder
 
-  import Logger, only: [info: 1, debug: 1]
+  import Logger, only: [info: 1]
 
   alias CoAP.Message
   alias CoAP.Payload
@@ -175,8 +175,6 @@ defmodule CoAP.Connection do
 
   # BLOCK-WISE TRANSFER
   defp receive_message(%{multipart: %{multipart: true, more: true}} = message, state) do
-    debug("Part, with more: #{inspect(message)}")
-
     # TODO: respect the number/size from control
     # TODO: do we need to send a control in response?
     reply(Message.response_for({:ok, :continue}, message), state)
@@ -188,8 +186,6 @@ defmodule CoAP.Connection do
   end
 
   defp receive_message(%{multipart: %{multipart: true, more: false}} = message, state) do
-    debug("Last Part: #{inspect(message)}")
-
     payload =
       state.in_payload
       |> Payload.add(message.multipart.number, message.payload)
@@ -363,8 +359,6 @@ defmodule CoAP.Connection do
         message.payload,
         message
       )
-
-    # debug("Sending response: #{inspect(response)}")
 
     reply(response, state)
 
