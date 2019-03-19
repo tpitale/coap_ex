@@ -62,7 +62,7 @@ defmodule CoAP.Connection do
 
   @default_payload_size 512
 
-  @ack_timeout 2000
+  @ack_timeout 500
   # ack_timeout*0.5
   # @ack_random_factor 1000
 
@@ -162,6 +162,7 @@ defmodule CoAP.Connection do
   # end
 
   # TODO: resend reset?
+  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
   defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
   # Do nothing if we receive a message from peer during these states; we should be shutting down
@@ -390,8 +391,8 @@ defmodule CoAP.Connection do
   defp state_for_return(%{phase: :peer_ack_sent} = state), do: {:stop, :normal, state}
   defp state_for_return(state), do: {:noreply, state}
 
-  defp direction(%{type: :ack}), do: :ack
-  defp direction(%{method: nil}), do: :response
+  # defp direction(%{type: :ack})
+  defp direction(%{method: nil, status: _status}), do: :response
   defp direction(%{method: m}) when is_atom(m), do: :request
 
   defp peer_for(%{ip: ip, port: port}), do: {ip, port}
