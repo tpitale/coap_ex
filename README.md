@@ -74,7 +74,7 @@ CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 * [ ] respect block-wise transfer controls over block number
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
-* [ ] hostname support?
+* [x] hostname support?
 
 `./coap-client.sh -m put coap://127.0.0.1/resource -e data`
 `nc -l 5683 -u | xxd`
