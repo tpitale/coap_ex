@@ -6,21 +6,22 @@ defmodule CoAP.Client do
   # TODO: options: headers/params?
 
   def get(url), do: con(:get, url)
+  def get(url, content), do: con(:get, url, content)
   def post(url), do: con(:post, url)
   def post(url, content), do: con(:post, url, content)
   def put(url), do: con(:put, url)
   def put(url, content), do: con(:put, url, content)
   def delete(url), do: con(:delete, url)
 
-  defp con(method, url), do: request(:con, method, url)
-  defp con(method, url, content), do: request(:con, method, url, content)
+  def con(method, url), do: request(:con, method, url)
+  def con(method, url, content), do: request(:con, method, url, content)
   # defp non(method, url), do: request(:non, method, url)
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)
 
-  defp request(type, method, url), do: request(type, method, url, <<>>)
+  def request(type, method, url), do: request(type, method, url, <<>>)
 
-  defp request(type, method, url, content) do
+  def request(type, method, url, content) do
     uri = :uri_string.parse(url)
 
     # TODO: what if this is a hostname?
