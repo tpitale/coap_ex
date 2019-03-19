@@ -9,8 +9,6 @@ defmodule CoAP.Multipart do
   # block2 => is the transfer description (number, is there more, size)
   # block1 => "control", or what size subsequent requests should be made at; server preference
 
-  import Logger, only: [debug: 1]
-
   alias CoAP.Block
 
   # TODO: redefine as description/control based on request/response

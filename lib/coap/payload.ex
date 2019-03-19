@@ -1,8 +1,6 @@
 defmodule CoAP.Payload do
   defstruct segments: [], multipart: false, data: <<>>, offset: 0
 
-  import Logger, only: [debug: 1]
-
   alias CoAP.Block
 
   def empty(), do: %__MODULE__{}

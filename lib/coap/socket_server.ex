@@ -20,8 +20,12 @@ defmodule CoAP.SocketServer do
 
   # Used by Connection to start a udp port
   # endpoint => client
-  def init([endpoint, connection_id, connection]) do
+  def init([endpoint, {host, port, token}, connection]) do
     {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
+
+    # TODO: use handle_continue to do this
+    ip = normalize_host(host)
+    connection_id = {ip, port, token}
 
     {:ok,
      %{port: 0, socket: socket, endpoint: endpoint, connections: %{connection_id => connection}}}
@@ -59,8 +63,10 @@ defmodule CoAP.SocketServer do
   end
 
   # TODO: accept data for replies
-  def handle_info({:deliver, message, {ip, port} = _peer}, %{socket: socket} = state) do
+  def handle_info({:deliver, message, {host, port} = _peer}, %{socket: socket} = state) do
     data = Message.encode(message)
+
+    ip = normalize_host(host)
 
     :gen_udp.send(socket, ip, port, data)
 
@@ -97,5 +103,22 @@ defmodule CoAP.SocketServer do
         [server, endpoint, peer]
       }
     )
+  end
+
+  defp normalize_host(host) when is_tuple(host), do: host
+
+  defp normalize_host(host) when is_binary(host) do
+    host
+    |> to_charlist()
+    |> normalize_host()
+  end
+
+  defp normalize_host(host) when is_list(host) do
+    host
+    |> :inet.getaddr(:inet)
+    |> case do
+      {:ok, ip} -> ip
+      {:error, _reason} -> nil
+    end
   end
 end

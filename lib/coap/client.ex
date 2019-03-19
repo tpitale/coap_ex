@@ -24,7 +24,7 @@ defmodule CoAP.Client do
     uri = :uri_string.parse(url)
 
     # TODO: what if this is a hostname?
-    ip = uri[:host] |> as_ip_tuple()
+    host = uri[:host]
     port = uri[:port]
     token = :crypto.strong_rand_bytes(4)
 
@@ -45,7 +45,7 @@ defmodule CoAP.Client do
 
     # TODO: start a connection
     # server = CoAP.SocketServer.start_link([0, {CoAP.Adapters.Client, self()}])
-    {:ok, connection} = CoAP.Connection.start_link([self(), {ip, port, token}])
+    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}])
 
     # TODO: deliver request
     send(connection, {:deliver, message})
@@ -59,13 +59,6 @@ defmodule CoAP.Client do
       {:deliver, response, _peer} -> response
     after
       @wait_timeout -> %Message{}
-    end
-  end
-
-  defp as_ip_tuple(ip) do
-    case ip |> to_charlist() |> :inet.parse_address() do
-      {:ok, address} -> address
-      {:error, _reason} -> nil
     end
   end
 end
