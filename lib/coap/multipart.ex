@@ -9,6 +9,8 @@ defmodule CoAP.Multipart do
   # block2 => is the transfer description (number, is there more, size)
   # block1 => "control", or what size subsequent requests should be made at; server preference
 
+  import Logger, only: [debug: 1]
+
   alias CoAP.Block
 
   # TODO: redefine as description/control based on request/response
@@ -44,16 +46,19 @@ defmodule CoAP.Multipart do
     }
   end
 
-  def as_blocks(request \\ false, multipart)
-
   def as_blocks(true, multipart) do
+    # debug("Encoding multipart as tuples for request: #{inspect(multipart)}")
+
     %{
       block1: multipart.description |> Block.to_tuple(),
       block2: multipart.control |> Block.to_tuple()
     }
   end
 
-  def as_blocks(_request, multipart) do
+  # TODO: if we get nil here, that's wrong
+  def as_blocks(false, multipart) do
+    # debug("Encoding multipart as tuples for response: #{inspect(multipart)}")
+
     %{
       block1: multipart.control |> Block.to_tuple(),
       block2: multipart.description |> Block.to_tuple()

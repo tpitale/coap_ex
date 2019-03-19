@@ -42,9 +42,6 @@ defmodule CoAP.SocketServer do
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
-    # debug("#{inspect(connection_id)}")
-    # debug("received: #{inspect(data)}")
-
     # TODO: store ref for connection process?
     # TODO: Monitor and remove connection when terminating?
     connection =
@@ -62,10 +59,10 @@ defmodule CoAP.SocketServer do
   end
 
   # TODO: accept data for replies
-  def handle_info({:deliver, message, {ip, port} = peer}, %{socket: socket} = state) do
+  def handle_info({:deliver, message, {ip, port} = _peer}, %{socket: socket} = state) do
     data = Message.encode(message)
 
-    debug("Sending data: #{inspect(data)} to #{inspect(peer)}")
+    # debug("Sending data: #{inspect(data)} to #{inspect(peer)}")
 
     :gen_udp.send(socket, ip, port, data)
 

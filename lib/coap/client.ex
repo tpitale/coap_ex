@@ -23,13 +23,15 @@ defmodule CoAP.Client do
   defp request(type, method, url, content) do
     uri = :uri_string.parse(url)
 
-    ip = uri[:host] |> to_charlist
+    # TODO: what if this is a hostname?
+    ip = uri[:host] |> as_ip_tuple()
     port = uri[:port]
     token = :crypto.strong_rand_bytes(4)
 
     {code_class, code_detail} = Message.encode_method(method)
 
     message = %Message{
+      request: true,
       type: type,
       method: method,
       token: token,
@@ -57,6 +59,13 @@ defmodule CoAP.Client do
       {:deliver, response, _peer} -> response
     after
       @wait_timeout -> %Message{}
+    end
+  end
+
+  defp as_ip_tuple(ip) do
+    case ip |> to_charlist() |> :inet.parse_address() do
+      {:ok, address} -> address
+      {:error, _reason} -> nil
     end
   end
 end

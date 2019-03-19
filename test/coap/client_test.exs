@@ -83,6 +83,17 @@ defmodule CoAP.ClientTest do
 
     response = CoAP.Client.post("coap://127.0.0.1:#{@port}/api", payload)
 
-    assert response.payload == :binary.part(payload, 0, 512)
+    assert byte_size(response.payload) == 1024
+  end
+
+  test "put with big request payload" do
+    {:ok, _server} =
+      CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
+
+    payload = StreamData.binary(length: 2048) |> Enum.take(1) |> hd()
+
+    response = CoAP.Client.put("coap://127.0.0.1:#{@port}/api", payload)
+
+    assert byte_size(response.payload) == 2048
   end
 end

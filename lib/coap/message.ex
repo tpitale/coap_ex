@@ -103,8 +103,11 @@ defmodule CoAP.Message do
 
   """
   def encode(%__MODULE__{multipart: %Multipart{}} = message) do
-    debug("Message is a request? #{message.request}")
-    blocks = Multipart.as_blocks(message.request, message.multipart)
+    # debug("multipart message is a request? #{message.request || false}")
+    # debug("multipart message is a request(code_detail)? #{request?(message.code_class) || false}")
+
+    # Always check code_detail in case the message was made directly, not decoded
+    blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
 
     %{message | options: Map.merge(message.options, blocks), multipart: nil}
     |> encode()
@@ -237,8 +240,8 @@ defmodule CoAP.Message do
 
       iex> CoAP.Message.multipart(true, %{block1: {1, true, 1024}, block2: {0, false, 512}})
       %CoAP.Multipart{
-        description: %CoAP.Block{number: 1, more: true, size: 1024},
         control: %CoAP.Block{number: 0, more: false, size: 512},
+        description: %CoAP.Block{number: 1, more: true, size: 1024},
         multipart: true,
         more: true,
         number: 1,

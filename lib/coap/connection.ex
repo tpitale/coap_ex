@@ -100,12 +100,7 @@ defmodule CoAP.Connection do
      }}
   end
 
-  # Non-adapted endpoint, e.g., client
-  # def init([server, endpoint, {ip, port, token} = _peer]) do
-  # end
-
   def init([client, {ip, port, token} = peer]) do
-    # TODO: make a new socket server with DynamicSupervisor
     # client is the endpoint
     # peer is the target ip/port?
     endpoint = {CoAP.Adapters.Client, client}
@@ -181,6 +176,9 @@ defmodule CoAP.Connection do
   # BLOCK-WISE TRANSFER
   defp receive_message(%{multipart: %{multipart: true, more: true}} = message, state) do
     debug("Part, with more: #{inspect(message)}")
+
+    # TODO: respect the number/size from control
+    # TODO: do we need to send a control in response?
     reply(Message.response_for({:ok, :continue}, message), state)
 
     %{
@@ -216,10 +214,8 @@ defmodule CoAP.Connection do
 
     {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
 
-    debug("Continuing with next block: #{inspect(block)}")
-
     # TODO: allow configurable control size for next block
-    multipart = %Multipart{description: block, control: Block.control(block.size)}
+    multipart = Multipart.build(block, Block.control(block.size))
 
     %{message | payload: bytes, multipart: multipart}
     |> reply(state)
@@ -286,7 +282,7 @@ defmodule CoAP.Connection do
     {data, block, payload} = Payload.next_segment(message.payload, @default_payload_size)
 
     # TODO: allow control over the block size
-    multipart = %Multipart{description: block, control: Block.control(block.size)}
+    multipart = Multipart.build(block, Block.control(block.size))
 
     # The server should send back the same message id of the request
     %{
@@ -297,12 +293,15 @@ defmodule CoAP.Connection do
     }
     |> reply(state)
 
+    timer = restart_timer(state.timer, @ack_timeout)
+
     %{
       state
       | phase: next_phase(:idle, type, :out),
         message: if(type == :con, do: message, else: nil),
         next_message_id: next_message_id(next_message_id),
-        out_payload: payload
+        out_payload: payload,
+        timer: timer
     }
   end
 
@@ -406,6 +405,7 @@ defmodule CoAP.Connection do
   # TIMERS =====================================================================
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
+  # defp cancel_timer(nil), do: nil
   defp cancel_timer(timer), do: Process.cancel_timer(timer)
 
   defp restart_timer(nil, timeout), do: start_timer(timeout)
