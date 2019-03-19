@@ -27,17 +27,44 @@ defmodule CoAP.Connection do
 
   use GenServer
 
+  defmodule State do
+    @max_retries 4
+
+    # udp socket
+    defstruct server: nil,
+              # App
+              handler: nil,
+              # peer ip
+              ip: nil,
+              # peer port
+              port: nil,
+              # connection token
+              token: nil,
+              phase: :idle,
+              message: <<>>,
+              timer: nil,
+              retries: @max_retries,
+              retry_timeout: 0,
+              in_payload: CoAP.Payload.empty(),
+              out_payload: CoAP.Payload.empty(),
+              next_message_id: nil
+  end
+
   # use CoAP.Transport
   # use CoAP.Responder
 
-  import Logger, only: [info: 1, debug: 1]
+  import Logger, only: [info: 1]
 
   alias CoAP.Message
+  alias CoAP.Payload
+  alias CoAP.Multipart
+  alias CoAP.Block
 
-  # @ack_timeout 2000
+  @default_payload_size 512
+
+  @ack_timeout 2000
   # ack_timeout*0.5
   # @ack_random_factor 1000
-  @max_retries 4
 
   # standard allows 2000
   @processing_delay 1000
@@ -58,38 +85,22 @@ defmodule CoAP.Connection do
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
+  # TODO: predefined defaults, merged with client/server-specific options
   # TODO: default adapter to GenericServer?
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
     {:ok,
-     %{
-       # udp socket
+     %State{
        server: server,
-       # App
        handler: handler,
-       # peer ip
        ip: ip,
-       # peer port
        port: port,
-       # connection token
-       token: token,
-       phase: :idle,
-       # message sent at timeout
-       message: <<>>,
-       # timer handling timeout
-       timer: nil,
-       retries: @max_retries,
-       retry_timeout: 0
+       token: token
      }}
   end
 
-  # Non-adapted endpoint, e.g., client
-  # def init([server, endpoint, {ip, port, token} = _peer]) do
-  # end
-
   def init([client, {ip, port, token} = peer]) do
-    # TODO: make a new socket server with DynamicSupervisor
     # client is the endpoint
     # peer is the target ip/port?
     endpoint = {CoAP.Adapters.Client, client}
@@ -98,24 +109,23 @@ defmodule CoAP.Connection do
     {:ok, handler} = start_handler(endpoint)
 
     {:ok,
-     %{
+     %State{
        server: server,
        handler: handler,
        ip: ip,
        port: port,
        token: token,
-       phase: :idle,
-       message: <<>>,
-       timer: nil,
-       retries: @max_retries,
-       retry_timeout: 0,
        next_message_id: next_message_id()
      }}
   end
 
+  # Block1 option is for requests
+  # Block2 option is for responses
+
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
     # TODO: start timer for conn
+    # TODO: check if the message_id matches what we may have already sent?
 
     message
     |> receive_message(state)
@@ -163,10 +173,57 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :sent_non} = state), do: state
   defp receive_message(_message, %{phase: :got_non} = state), do: state
 
+  # BLOCK-WISE TRANSFER
+  defp receive_message(%{multipart: %{multipart: true, more: true}} = message, state) do
+    # TODO: respect the number/size from control
+    # TODO: do we need to send a control in response?
+    reply(Message.response_for({:ok, :continue}, message), state)
+
+    %{
+      state
+      | in_payload: Payload.add(state.in_payload, message.multipart.number, message.payload)
+    }
+  end
+
+  defp receive_message(%{multipart: %{multipart: true, more: false}} = message, state) do
+    payload =
+      state.in_payload
+      |> Payload.add(message.multipart.number, message.payload)
+      |> Payload.to_binary()
+
+    %{
+      message
+      | payload: payload,
+        multipart: nil
+    }
+    |> receive_message(state)
+
+    %{state | in_payload: nil}
+  end
+
+  defp receive_message(
+         %{status: {:ok, :continue}},
+         %{phase: :awaiting_peer_ack, out_payload: payload, message: message} = state
+       ) do
+    # Send the next portion of the payload
+    restart_timer(state.timer, @ack_timeout)
+
+    {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
+
+    # TODO: allow configurable control size for next block
+    multipart = Multipart.build(block, Block.control(block.size))
+
+    %{message | payload: bytes, multipart: multipart}
+    |> reply(state)
+
+    # TODO: do we remain in :awaiting_peer_ack?
+    %{state | out_payload: next_payload}
+  end
+
   # con, method, request (server)
   # con, response (client)
   defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     await_app_ack(message, state)
   end
@@ -174,7 +231,7 @@ defmodule CoAP.Connection do
   # non, method, request (server)
   # non, response (client)
   defp receive_message(%Message{type: :non} = message, %{phase: :idle} = state) do
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     %{state | phase: next_phase(:idle, :non, :in)}
   end
@@ -183,7 +240,7 @@ defmodule CoAP.Connection do
   defp receive_message(%Message{type: :reset} = _message, %{phase: phase} = state) do
     cancel_timer(state.timer)
 
-    send(state[:handler], :error)
+    send(state.handler, :error)
 
     %{state | phase: next_phase(phase, :reset), timer: nil}
   end
@@ -193,13 +250,13 @@ defmodule CoAP.Connection do
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
     cancel_timer(state.timer)
 
-    handle(message, state[:handler], peer_for(state))
+    handle(message, state.handler, peer_for(state))
 
     %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
   # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-  #   handle(:response, message, state[:handler], peer_for(state))
+  #   handle(:response, message, state.handler, peer_for(state))
   #
   #   app_ack_sent(state)
   # end
@@ -213,18 +270,34 @@ defmodule CoAP.Connection do
   end
 
   # send message to peer from client
+  # The client should not send a message id, that is managed by the connection
   defp deliver_message(
-         %Message{type: type} = message,
-         %{phase: :idle, next_message_id: message_id} = state
+         %Message{type: type, message_id: message_id} = message,
+         %{phase: :idle, next_message_id: next_message_id} = state
        ) do
-    %{message | message_id: message_id}
+    {data, block, payload} = Payload.next_segment(message.payload, @default_payload_size)
+
+    # TODO: allow control over the block size
+    multipart = Multipart.build(block, Block.control(block.size))
+
+    # The server should send back the same message id of the request
+    %{
+      message
+      | message_id: message_id || next_message_id,
+        payload: data,
+        multipart: multipart
+    }
     |> reply(state)
+
+    timer = restart_timer(state.timer, @ack_timeout)
 
     %{
       state
       | phase: next_phase(:idle, type, :out),
         message: if(type == :con, do: message, else: nil),
-        next_message_id: next_message_id(message_id)
+        next_message_id: next_message_id(next_message_id),
+        out_payload: payload,
+        timer: timer
     }
   end
 
@@ -272,7 +345,7 @@ defmodule CoAP.Connection do
   defp await_app_ack(message, state) do
     # ready for APP timeout
     cached_response = Message.response_for(message)
-    timer = restart_timer(state[:timer], @processing_delay)
+    timer = restart_timer(state.timer, @processing_delay)
 
     %{state | phase: :awaiting_app_ack, message: cached_response, timer: timer}
   end
@@ -286,8 +359,6 @@ defmodule CoAP.Connection do
         message.payload,
         message
       )
-
-    debug("Sending response: #{inspect(response)}")
 
     reply(response, state)
 
@@ -328,6 +399,7 @@ defmodule CoAP.Connection do
   # TIMERS =====================================================================
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
+  # defp cancel_timer(nil), do: nil
   defp cancel_timer(timer), do: Process.cancel_timer(timer)
 
   defp restart_timer(nil, timeout), do: start_timer(timeout)
@@ -342,6 +414,9 @@ defmodule CoAP.Connection do
     :rand.seed(:exs1024)
     :rand.uniform(@max_message_id)
   end
+
+  # The server does not need to track message_id, just mirror the request
+  defp next_message_id(nil), do: nil
 
   defp next_message_id(id) when is_integer(id) do
     if id < @max_message_id, do: id + 1, else: 1
