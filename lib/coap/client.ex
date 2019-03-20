@@ -51,8 +51,6 @@ defmodule CoAP.Client do
   defp await_response(_message) do
     receive do
       {:deliver, response, _peer} -> response
-      # TODO: do we need to re-request when we get an ack?
-      :ack -> :ack
     after
       @wait_timeout -> %Message{}
     end

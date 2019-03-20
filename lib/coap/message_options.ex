@@ -1,6 +1,8 @@
 defmodule CoAP.MessageOptions do
   # @payload_marker 0xFF
 
+  # TODO: struct for all options?
+
   @doc """
 
   Examples
