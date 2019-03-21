@@ -15,7 +15,7 @@ defmodule CoAP.SocketServer do
   def init([port, endpoint]) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
-    {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}}}
+    {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}, monitors: %{}}}
   end
 
   # Used by Connection to start a udp port
@@ -27,8 +27,16 @@ defmodule CoAP.SocketServer do
     ip = normalize_host(host)
     connection_id = {ip, port, token}
 
+    ref = Process.monitor(connection)
+
     {:ok,
-     %{port: 0, socket: socket, endpoint: endpoint, connections: %{connection_id => connection}}}
+     %{
+       port: 0,
+       socket: socket,
+       endpoint: endpoint,
+       connections: %{connection_id => connection},
+       monitors: %{ref => connection_id}
+     }}
   end
 
   def server?(pid), do: GenServer.call(pid, :server)
@@ -40,7 +48,7 @@ defmodule CoAP.SocketServer do
 
   def handle_info(
         {:udp, _socket, peer_ip, peer_port, data},
-        %{connections: connections, endpoint: endpoint} = state
+        %{monitors: monitors, connections: connections, endpoint: endpoint} = state
       ) do
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
@@ -55,11 +63,18 @@ defmodule CoAP.SocketServer do
         conn -> conn
       end
 
+    ref = Process.monitor(connection)
+
     # TODO: if it's alive?
     send(connection, {:receive, message})
     # TODO: error if dead process
 
-    {:noreply, %{state | connections: Map.put(connections, connection_id, connection)}}
+    {:noreply,
+     %{
+       state
+       | connections: Map.put(connections, connection_id, connection),
+         monitors: Map.put(monitors, ref, connection_id)
+     }}
   end
 
   # TODO: accept data for replies
@@ -88,10 +103,12 @@ defmodule CoAP.SocketServer do
 
   # TODO: Do we need to do this when using connection supervisor?
   # TODO: Can we use this to remove dead connections?
-  def handle_info({:EXIT, from, reason}, state) do
-    debug("Received exit in CoAP.SocketServer from: #{inspect(from)}, with #{inspect(reason)}")
+  def handle_info({:DOWN, ref, :process, _from, reason}, %{monitors: monitors} = state) do
+    connection_id = Map.fetch(monitors, ref)
 
-    {:noreply, state}
+    debug("Received DOWN:#{reason} in CoAP.SocketServer from: #{inspect(connection_id)}")
+
+    {:noreply, %{state | connections: Map.delete(state.connections, connection_id)}}
   end
 
   # TODO: move to CoAP
