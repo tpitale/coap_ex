@@ -1,6 +1,7 @@
 defmodule CoAP.SocketServer do
   use GenServer
 
+  import CoAP.Util.BinaryFormatter, only: [to_hex: 1]
   import Logger, only: [debug: 1]
 
   alias CoAP.Message
@@ -50,7 +51,7 @@ defmodule CoAP.SocketServer do
         {:udp, _socket, peer_ip, peer_port, data},
         %{monitors: monitors, connections: connections, endpoint: endpoint} = state
       ) do
-    debug("Received raw data #{data} from #{inspect({peer_ip, peer_port})}")
+    debug("Received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
@@ -83,7 +84,7 @@ defmodule CoAP.SocketServer do
 
     ip = normalize_host(host)
 
-    debug("Sending raw data #{data} to #{inspect({ip, port})}")
+    debug("Sending raw data #{to_hex(data)} to #{inspect({ip, port})}")
 
     :gen_udp.send(socket, ip, port, data)
 
