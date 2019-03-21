@@ -50,6 +50,8 @@ defmodule CoAP.SocketServer do
         {:udp, _socket, peer_ip, peer_port, data},
         %{monitors: monitors, connections: connections, endpoint: endpoint} = state
       ) do
+    debug("Received raw data #{data} from #{inspect({peer_ip, peer_port})}")
+
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
@@ -80,6 +82,8 @@ defmodule CoAP.SocketServer do
     data = Message.encode(message)
 
     ip = normalize_host(host)
+
+    debug("Sending raw data #{data} to #{inspect({ip, port})}")
 
     :gen_udp.send(socket, ip, port, data)
 
