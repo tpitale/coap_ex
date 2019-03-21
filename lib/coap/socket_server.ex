@@ -54,8 +54,6 @@ defmodule CoAP.SocketServer do
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
 
-    # TODO: store ref for connection process?
-    # TODO: Monitor and remove connection when terminating?
     connection =
       case Map.get(connections, connection_id) ||
              start_connection(self(), endpoint, connection_id) do
@@ -108,7 +106,12 @@ defmodule CoAP.SocketServer do
 
     debug("Received DOWN:#{reason} in CoAP.SocketServer from: #{inspect(connection_id)}")
 
-    {:noreply, %{state | connections: Map.delete(state.connections, connection_id)}}
+    {:noreply,
+     %{
+       state
+       | connections: Map.delete(state.connections, connection_id),
+         monitors: Map.delete(monitors, ref)
+     }}
   end
 
   # TODO: move to CoAP
