@@ -107,7 +107,7 @@ defmodule CoAP.SocketServer do
   # TODO: Do we need to do this when using connection supervisor?
   # TODO: Can we use this to remove dead connections?
   def handle_info({:DOWN, ref, :process, _from, reason}, %{monitors: monitors} = state) do
-    connection_id = Map.fetch(monitors, ref)
+    connection_id = Map.get(monitors, ref)
 
     debug("Received DOWN:#{reason} in CoAP.SocketServer from: #{inspect(connection_id)}")
 
