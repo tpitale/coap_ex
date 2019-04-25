@@ -1,4 +1,11 @@
 defmodule CoAP.Util.BinaryFormatter do
+  @max_allowed_bytes 1000
+
+  # truncate long values
+  def to_hex(<<allowed::binary-size(@max_allowed_bytes), rest::binary>>) do
+    to_hex(allowed, [], 0) <> " ... #{@max_allowed_bytes + byte_size(rest)} total bytes"
+  end
+
   def to_hex(bytes) when is_binary(bytes) do
     to_hex(bytes, [], 0)
   end
