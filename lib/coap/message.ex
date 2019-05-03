@@ -277,6 +277,7 @@ defmodule CoAP.Message do
     }
   end
 
+  # TODO: example for ok, continue
   def response_for(method, message) do
     {code_class, code_detail} = encode_method(method)
 

@@ -1,13 +1,17 @@
 defmodule CoAP.Block do
   defstruct number: 0, more: false, size: 0
 
+  # TODO: if more: false, a size_exponent of 0 should be ignored?
+  # otherwise size_exponent of 0 results in size: 16
+
   def build(%__MODULE__{} = block), do: block
 
   def build({number, more, size}) do
     %__MODULE__{number: number, more: more, size: size}
   end
 
-  def control(size), do: %__MODULE__{size: size}
+  def empty(), do: %__MODULE__{}
+  # def control(number), do: %__MODULE__{number: number}
 
   def to_tuple(%__MODULE__{} = block), do: {block.number, block.more, block.size}
   def to_tuple(block) when is_tuple(block), do: block
@@ -31,6 +35,10 @@ defmodule CoAP.Block do
 
   def encode(%__MODULE__{} = block), do: encode({block.number, block.more, block.size})
   def encode(%{number: number, more: more, size: size}), do: encode({number, more, size})
+
+  def encode({number, more, 0}) do
+    encode(number, if(more, do: 1, else: 0), 0)
+  end
 
   def encode({number, more, size}) do
     encode(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
