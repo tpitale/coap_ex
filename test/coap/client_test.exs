@@ -33,7 +33,7 @@ defmodule CoAP.ClientTest do
       # path should have api in it
       # params should be empty
 
-      payload = StreamData.binary(length: 2048) |> Enum.take(1) |> hd()
+      payload = StreamData.binary(length: 1024) |> Enum.take(1) |> hd()
 
       %Message{
         type: :con,
@@ -72,28 +72,28 @@ defmodule CoAP.ClientTest do
     assert response.message_id > 0
     assert response.code_class == 2
     assert response.code_detail == 5
-    assert byte_size(response.payload) == 2048
+    assert byte_size(response.payload) == 1024
   end
 
   test "post with big request payload" do
     {:ok, _server} =
       CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
 
-    payload = StreamData.binary(length: 2048) |> Enum.take(1) |> hd()
+    payload = StreamData.binary(length: 1024) |> Enum.take(1) |> hd()
 
     response = CoAP.Client.post("coap://127.0.0.1:#{@port}/api", payload)
 
-    assert byte_size(response.payload) == 2048
+    assert byte_size(response.payload) == 1024
   end
 
   test "put with big request payload" do
     {:ok, _server} =
       CoAP.SocketServer.start_link([@port, {CoAP.Adapters.GenericServer, FakeEndpoint}])
 
-    payload = StreamData.binary(length: 2048) |> Enum.take(1) |> hd()
+    payload = StreamData.binary(length: 1024) |> Enum.take(1) |> hd()
 
     response = CoAP.Client.put("coap://127.0.0.1:#{@port}/api", payload)
 
-    assert byte_size(response.payload) == 2048
+    assert byte_size(response.payload) == 1024
   end
 end

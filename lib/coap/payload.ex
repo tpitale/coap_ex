@@ -1,5 +1,5 @@
 defmodule CoAP.Payload do
-  defstruct segments: [], multipart: false, data: <<>>, size: nil, number: 0
+  defstruct segments: [], multipart: false, data: <<>>, size: nil
 
   alias CoAP.Block
 
@@ -36,8 +36,8 @@ defmodule CoAP.Payload do
 
       iex> data = StreamData.string(:alphanumeric) |> Enum.take(2048) |> :binary.list_to_bin
       iex> {_bytes, block, payload} = CoAP.Payload.segment_at(data, 256, 0)
-      iex> {block, payload.multipart, payload.size, payload.number}
-      {%CoAP.Block{number: 0, more: true, size: 256}, true, 256, 1}
+      iex> {block, payload.multipart, payload.size}
+      {%CoAP.Block{number: 0, more: true, size: 256}, true, 256}
 
   """
   def segment_at(payload, number \\ nil)
@@ -46,14 +46,11 @@ defmodule CoAP.Payload do
     do: {<<>>, Block.build({0, false, size}), %__MODULE__{}}
 
   def segment_at(
-        %__MODULE__{data: data, size: size, number: number} = payload,
-        requested_number
+        %__MODULE__{data: data, size: size} = payload,
+        number
       ) do
-    # if no requested number, use the payload number
-    number = requested_number || number
-    offset = offset_for(size, number)
-    # number = (offset / size) |> round
-
+    number = number || 0
+    offset = size * number
     data_size = byte_size(data)
     part_size = Enum.min([data_size - offset, size])
     more = data_size > offset + part_size
@@ -63,15 +60,11 @@ defmodule CoAP.Payload do
 
     block = Block.build({number, more, size})
 
-    {data, block, %{payload | number: number + 1, multipart: more}}
+    {data, block, %{payload | multipart: more}}
   end
 
   # This is the only time we can set size
   def segment_at(data, size, number) when is_binary(data) do
-    %__MODULE__{data: data, size: size, number: number || 0} |> segment_at(number)
-  end
-
-  defp offset_for(size, number) do
-    size * number
+    %__MODULE__{data: data, size: size} |> segment_at(number)
   end
 end

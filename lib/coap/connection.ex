@@ -217,7 +217,7 @@ defmodule CoAP.Connection do
   #   PUT/POST REQUEST WITH BODY AS SERVER
   #   RESPONSE FROM SERVER AS CLIENT
   defp receive_message(
-         %{multipart: %{multipart: true, more: true, number: number, size: size}} = message,
+         %{multipart: %{more: true, number: number, size: size}} = message,
          state
        ) do
     # TODO: respect the number/size from control
@@ -249,7 +249,7 @@ defmodule CoAP.Connection do
   end
 
   defp receive_message(
-         %{multipart: %{multipart: true, more: false, number: number}} = message,
+         %{multipart: %{more: false, number: number}} = message,
          state
        ) do
     payload =

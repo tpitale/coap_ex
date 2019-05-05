@@ -72,7 +72,7 @@ CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 * [ ] handle timeouts and retries of block-wise transfers
 * [ ] accept block-wise transfer controls over size
 * [ ] respect block-wise transfer controls over size
-* [ ] respect block-wise transfer controls over block number
+* [x] respect block-wise transfer controls over block number
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
 * [x] hostname support?
