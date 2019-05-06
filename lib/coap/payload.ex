@@ -46,14 +46,12 @@ defmodule CoAP.Payload do
       {%CoAP.Block{number: 2, more: true, size: 256}, true, 256}
 
       iex> data = Enum.take(StreamData.binary(length: 1024), 1) |> hd()
-      iex> IO.inspect(byte_size(data))
       iex> payload = %CoAP.Payload{data: data, size: 256}
       iex> {_bytes, block, next_payload} = CoAP.Payload.segment_at(payload, 3)
       iex> {block, next_payload.multipart, next_payload.size}
       {%CoAP.Block{number: 3, more: false, size: 256}, false, 256}
 
       iex> data = Enum.take(StreamData.binary(length: 1048), 1) |> hd()
-      iex> IO.inspect(byte_size(data))
       iex> payload = %CoAP.Payload{data: data, size: 256}
       iex> {bytes, block, _next_payload} = CoAP.Payload.segment_at(payload, 4)
       iex> {block, byte_size(bytes)}

@@ -177,9 +177,6 @@ defmodule CoAP.Connection do
   # end
 
   # TODO: resend reset?
-  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
-  # defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
-  # TODO: what about receiving the request for the next chunk?
 
   # Do nothing if we receive a message from peer during these states; we should be shutting down
   defp receive_message(_message, %{phase: :awaiting_app_ack} = state), do: state
@@ -221,9 +218,12 @@ defmodule CoAP.Connection do
          state
        ) do
     # TODO: respect the number/size from control
-    # TODO: do we need to send a control in response? yes
-    # TODO: does only the server send ok, continue? yes
-    # TODO: what does the client send? the same request with control number > 0
+
+    # Only restart a timer if the timer was created on message delivery
+    case state.timer do
+      nil -> nil
+      timer -> restart_timer(timer, @ack_timeout)
+    end
 
     # TODO: multipart to handle response to message.multipart
     # more must be false, must use same size on subsequent request
@@ -266,6 +266,9 @@ defmodule CoAP.Connection do
 
     %{state | in_payload: nil}
   end
+
+  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
+  defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
   # TODO: check control for the particular block number we receiver wants
   # Into Payload pass the control.size || @default_payload_size
@@ -317,15 +320,15 @@ defmodule CoAP.Connection do
   # TODO: receive_message(:error) from decoding error
 
   # DELIVER ====================================================================
-  # reply from app to peer
+  # reply from app to peer, this is part of the server
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
     # TODO: does the message include the original request control?
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size)
 
     multipart = Multipart.build(block, Block.empty())
 
-    # TODO: restart timer?
     cancel_timer(state.timer)
+    # TODO: start timer for peer ack if multipart?
 
     response =
       Message.response_for(
@@ -338,7 +341,7 @@ defmodule CoAP.Connection do
 
     reply(response, state)
 
-    # TODO: if we have payload, is it peer_ack_sent?
+    # TODO: if we have payload, is it still peer_ack_sent?
     %{state | phase: :peer_ack_sent, out_payload: payload, message: response, timer: nil}
   end
 
@@ -402,6 +405,8 @@ defmodule CoAP.Connection do
 
     timeout = timeout * 2
     timer = start_timer(timeout)
+
+    # TODO: instrument log/stat for each retry
 
     %{
       state
