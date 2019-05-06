@@ -134,9 +134,6 @@ defmodule CoAP.Connection do
      }}
   end
 
-  # Block1 option is for requests
-  # Block2 option is for responses
-
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
     # TODO: start timer for conn
@@ -171,12 +168,14 @@ defmodule CoAP.Connection do
   # con -> reset
   # TODO: how do we get a nil method, vs a response
   # defp receive_message(%Message{method: nil, type: :con} = message, %{phase: :idle} = state) do
-  # TODO: peer ack with reset, next state is peer_ack_sent
-  # Message.response_for(message)
-  # reply(:reset, message, state[:server])
+  #   TODO: peer ack with reset, next state is peer_ack_sent
+  #   Message.response_for(message)
+  #   reply(:reset, message, state[:server])
   # end
 
   # TODO: resend reset?
+  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
+  defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
   # Do nothing if we receive a message from peer during these states; we should be shutting down
   defp receive_message(_message, %{phase: :awaiting_app_ack} = state), do: state
@@ -193,11 +192,9 @@ defmodule CoAP.Connection do
          %{phase: :awaiting_peer_ack} = state
        )
        when number > 0 do
-    # Send the next portion of the payload
     restart_timer(state.timer, @ack_timeout)
 
     # Payload should calculate byte offset from next number
-    # TODO: get number from multipart to pass to segment_at
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
 
     # TODO: allow configurable control size for next block
@@ -216,11 +213,9 @@ defmodule CoAP.Connection do
          %{multipart: %{more: true, number: number, size: size}} = message,
          state
        ) do
-    # TODO: respect the number/size from control
-
     restart_timer(state.timer, @ack_timeout)
 
-    # TODO: multipart to handle response to message.multipart
+    # TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
     multipart = Multipart.build(Block.empty(), Block.build({number + 1, false, size}))
 
@@ -253,7 +248,6 @@ defmodule CoAP.Connection do
       |> Payload.add(number, message.payload)
       |> Payload.to_binary()
 
-    # TODO: if we remove check on number>0, handler doesn't like multipart: nil
     %{
       message
       | payload: payload,
@@ -263,15 +257,6 @@ defmodule CoAP.Connection do
 
     %{state | in_payload: nil}
   end
-
-  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
-  defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
-
-  # TODO: check control for the particular block number we receiver wants
-  # Into Payload pass the control.size || @default_payload_size
-  # Into Payload pass the control.number
-  # TODO: receive_message as request from client for next payload, it isn't ok, continue
-  # TODO: this should be for peer_ack_sent, or maybe the state should be different if more is in the payload
 
   # con, method, request (server)
   # con, response (client)
@@ -317,7 +302,6 @@ defmodule CoAP.Connection do
     multipart = Multipart.build(block, Block.empty())
 
     cancel_timer(state.timer)
-    # TODO: start timer for peer ack if multipart?
 
     response =
       Message.response_for(
@@ -383,7 +367,6 @@ defmodule CoAP.Connection do
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
     send(state.handler, {:error, {:timeout, state.phase}})
 
-    # TODO: exit the connection
     %{state | timer: nil}
   end
 
