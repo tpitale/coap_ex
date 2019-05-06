@@ -190,9 +190,9 @@ defmodule CoAP.Connection do
   # BLOCK-WISE TRANSFER: CLIENT REQUEST FOR NEXT BLOCK FROM SERVER
   defp receive_message(
          %{multipart: %{requested_number: number}} = _message,
-         %{phase: phase} = state
+         %{phase: :awaiting_peer_ack} = state
        )
-       when phase in [:awaiting_peer_ack, :peer_ack_sent] and number > 0 do
+       when number > 0 do
     # Send the next portion of the payload
     restart_timer(state.timer, @ack_timeout)
 
@@ -206,7 +206,6 @@ defmodule CoAP.Connection do
     response = %{state.message | payload: bytes, multipart: multipart}
     reply(response, state)
 
-    # TODO: do we remain in same phase :awaiting_peer_ack/:peer_ack_sent?
     %{state | out_payload: next_payload, message: response}
   end
 
@@ -219,11 +218,7 @@ defmodule CoAP.Connection do
        ) do
     # TODO: respect the number/size from control
 
-    # Only restart a timer if the timer was created on message delivery
-    case state.timer do
-      nil -> nil
-      timer -> restart_timer(timer, @ack_timeout)
-    end
+    restart_timer(state.timer, @ack_timeout)
 
     # TODO: multipart to handle response to message.multipart
     # more must be false, must use same size on subsequent request
@@ -251,12 +246,14 @@ defmodule CoAP.Connection do
   defp receive_message(
          %{multipart: %{more: false, number: number}} = message,
          state
-       ) do
+       )
+       when number > 0 do
     payload =
       state.in_payload
       |> Payload.add(number, message.payload)
       |> Payload.to_binary()
 
+    # TODO: if we remove check on number>0, handler doesn't like multipart: nil
     %{
       message
       | payload: payload,
@@ -311,19 +308,11 @@ defmodule CoAP.Connection do
     %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
-  # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-  #   handle(:response, message, state.handler, peer_for(state))
-  #
-  #   app_ack_sent(state)
-  # end
-
-  # TODO: receive_message(:error) from decoding error
-
   # DELIVER ====================================================================
   # reply from app to peer, this is part of the server
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
     # TODO: does the message include the original request control?
-    {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size)
+    {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     multipart = Multipart.build(block, Block.empty())
 
@@ -341,8 +330,13 @@ defmodule CoAP.Connection do
 
     reply(response, state)
 
-    # TODO: if we have payload, is it still peer_ack_sent?
-    %{state | phase: :peer_ack_sent, out_payload: payload, message: response, timer: nil}
+    phase =
+      case payload.multipart do
+        true -> :awaiting_peer_ack
+        false -> :peer_ack_sent
+      end
+
+    %{state | phase: phase, out_payload: payload, message: response, timer: nil}
   end
 
   # send message to peer from client

@@ -57,6 +57,13 @@ defmodule CoAP.Payload do
       iex> {block, byte_size(bytes)}
       {%CoAP.Block{number: 4, more: false, size: 256}, 24}
 
+      iex> CoAP.Payload.segment_at(<<18, 5, 10, 3, 1, 2, 3>>, 512, 0)
+      {
+        <<18, 5, 10, 3, 1, 2, 3>>,
+        %CoAP.Block{number: 0, more: false, size: 512},
+        %CoAP.Payload{segments: [], multipart: false, data: <<18, 5, 10, 3, 1, 2, 3>>, size: 512}
+      }
+
   """
   def segment_at(payload, number \\ nil)
 
