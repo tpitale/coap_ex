@@ -3,6 +3,8 @@ defmodule CoAP.Client do
 
   @wait_timeout 10_000
 
+  import Logger, only: [debug: 1]
+
   # TODO: options: headers/params?
 
   def get(url), do: con(:get, url)
@@ -41,6 +43,8 @@ defmodule CoAP.Client do
       options: %{uri_path: String.split(uri[:path], "/")}
     }
 
+    debug("Client Request: #{inspect(message)}")
+
     {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}])
 
     send(connection, {:deliver, message})
@@ -51,6 +55,7 @@ defmodule CoAP.Client do
   defp await_response(_message) do
     receive do
       {:deliver, response, _peer} -> response
+      {:error, reason} -> {:error, reason}
     after
       @wait_timeout -> %Message{}
     end

@@ -30,8 +30,8 @@ defmodule CoAP.Handler do
     {:noreply, state}
   end
 
-  def handle_info(:error, {adapter, endpoint} = state) do
-    adapter.error({endpoint, {}})
+  def handle_info({:error, reason}, {adapter, endpoint} = state) do
+    adapter.error({endpoint, %{reason: reason}})
     {:noreply, state}
   end
 
