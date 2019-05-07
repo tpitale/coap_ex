@@ -38,7 +38,7 @@ defmodule CoAP.ClientTest do
       %Message{
         type: :con,
         code_class: 2,
-        code_detail: 1,
+        code_detail: 5,
         message_id: message.message_id,
         token: message.token,
         payload: payload
@@ -71,7 +71,7 @@ defmodule CoAP.ClientTest do
 
     assert response.message_id > 0
     assert response.code_class == 2
-    assert response.code_detail == 1
+    assert response.code_detail == 5
     assert byte_size(response.payload) == 1024
   end
 

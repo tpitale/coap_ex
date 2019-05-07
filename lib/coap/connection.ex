@@ -23,6 +23,21 @@ defmodule CoAP.Connection do
     | app_ack_sent -> ?
     | got_reset -> ?
     ----------------------------------------------------------------------------
+
+    client always makes requests
+    client receive_message is a response
+    client deliver_message is a request
+    client receives status
+    client delivers verb
+    receive + status => client
+    deliver + verb => client
+    server always makes responses
+    server receive message is a request
+    server deliver_message is a response
+    server receives verb
+    server delivers status
+    deliver + status => server
+    receive + verb => server
   """
 
   use GenServer
@@ -74,10 +89,10 @@ defmodule CoAP.Connection do
   # 16 bit number
   @max_message_id 65535
 
-  def child_spec(server, endpoint, peer) do
+  def child_spec([server, endpoint, peer]) do
     %{
       id: peer,
-      start: {__MODULE__, :start_link, [server, endpoint, peer]},
+      start: {__MODULE__, :start_link, [[server, endpoint, peer]]},
       restart: :transient,
       modules: [__MODULE__]
     }
@@ -119,9 +134,6 @@ defmodule CoAP.Connection do
      }}
   end
 
-  # Block1 option is for requests
-  # Block2 option is for responses
-
   def handle_info({:receive, %Message{} = message}, state) do
     # TODO: connection timeouts
     # TODO: start timer for conn
@@ -156,9 +168,9 @@ defmodule CoAP.Connection do
   # con -> reset
   # TODO: how do we get a nil method, vs a response
   # defp receive_message(%Message{method: nil, type: :con} = message, %{phase: :idle} = state) do
-  # TODO: peer ack with reset, next state is peer_ack_sent
-  # Message.response_for(message)
-  # reply(:reset, message, state[:server])
+  #   TODO: peer ack with reset, next state is peer_ack_sent
+  #   Message.response_for(message)
+  #   reply(:reset, message, state[:server])
   # end
 
   # TODO: resend reset?
@@ -174,22 +186,66 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :sent_non} = state), do: state
   defp receive_message(_message, %{phase: :got_non} = state), do: state
 
-  # BLOCK-WISE TRANSFER
-  defp receive_message(%{multipart: %{multipart: true, more: true}} = message, state) do
+  # BLOCK-WISE TRANSFER: CLIENT REQUEST FOR NEXT BLOCK FROM SERVER
+  defp receive_message(
+         %{multipart: %{requested_number: number}} = _message,
+         %{phase: :awaiting_peer_ack} = state
+       )
+       when number > 0 do
+    restart_timer(state.timer, @ack_timeout)
+
+    # Payload should calculate byte offset from next number
+    {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
+
+    # TODO: allow configurable control size for next block
+    multipart = Multipart.build(block, Block.empty())
+
+    response = %{state.message | payload: bytes, multipart: multipart}
+    reply(response, state)
+
+    %{state | out_payload: next_payload, message: response}
+  end
+
+  # BLOCK-WISE TRANSFER:
+  #   PUT/POST REQUEST WITH BODY AS SERVER
+  #   RESPONSE FROM SERVER AS CLIENT
+  defp receive_message(
+         %{multipart: %{more: true, number: number, size: size}} = message,
+         state
+       ) do
+    restart_timer(state.timer, @ack_timeout)
+
     # TODO: respect the number/size from control
-    # TODO: do we need to send a control in response?
-    reply(Message.response_for({:ok, :continue}, message), state)
+    # more must be false, must use same size on subsequent request
+    multipart = Multipart.build(Block.empty(), Block.build({number + 1, false, size}))
+
+    # alternatively message.verb == nil => client
+    response =
+      case message.status do
+        # client sends original message with new control number
+        {:ok, _} -> state.message
+        # server sends ok, continue
+        _ -> Message.response_for({:ok, :continue}, message)
+      end
+
+    response = %{response | multipart: multipart}
+    reply(response, state)
 
     %{
       state
-      | in_payload: Payload.add(state.in_payload, message.multipart.number, message.payload)
+      | in_payload: Payload.add(state.in_payload, number, message.payload),
+        message: response
     }
   end
 
-  defp receive_message(%{multipart: %{multipart: true, more: false}} = message, state) do
+  defp receive_message(
+         %{multipart: %{more: false, number: number}} = message,
+         state
+       )
+       when number > 0 do
     payload =
       state.in_payload
-      |> Payload.add(message.multipart.number, message.payload)
+      |> Payload.add(number, message.payload)
       |> Payload.to_binary()
 
     %{
@@ -200,25 +256,6 @@ defmodule CoAP.Connection do
     |> receive_message(state)
 
     %{state | in_payload: nil}
-  end
-
-  defp receive_message(
-         %{status: {:ok, :continue}},
-         %{phase: :awaiting_peer_ack, out_payload: payload, message: message} = state
-       ) do
-    # Send the next portion of the payload
-    restart_timer(state.timer, @ack_timeout)
-
-    {bytes, block, next_payload} = Payload.next_segment(payload, @default_payload_size)
-
-    # TODO: allow configurable control size for next block
-    multipart = Multipart.build(block, Block.control(block.size))
-
-    %{message | payload: bytes, multipart: multipart}
-    |> reply(state)
-
-    # TODO: do we remain in :awaiting_peer_ack?
-    %{state | out_payload: next_payload}
   end
 
   # con, method, request (server)
@@ -256,18 +293,34 @@ defmodule CoAP.Connection do
     %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
-  # defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
-  #   handle(:response, message, state.handler, peer_for(state))
-  #
-  #   app_ack_sent(state)
-  # end
-
-  # TODO: receive_message(:error) from decoding error
-
   # DELIVER ====================================================================
-  # reply from app to peer
+  # reply from app to peer, this is part of the server
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
-    send_peer_ack(message, state)
+    # TODO: does the message include the original request control?
+    {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
+
+    multipart = Multipart.build(block, Block.empty())
+
+    cancel_timer(state.timer)
+
+    response =
+      Message.response_for(
+        {message.code_class, message.code_detail},
+        bytes,
+        message
+      )
+
+    response = %{response | multipart: multipart}
+
+    reply(response, state)
+
+    phase =
+      case payload.multipart do
+        true -> :awaiting_peer_ack
+        false -> :peer_ack_sent
+      end
+
+    %{state | phase: phase, out_payload: payload, message: response, timer: nil}
   end
 
   # send message to peer from client
@@ -276,10 +329,11 @@ defmodule CoAP.Connection do
          %Message{type: type, message_id: message_id} = message,
          %{phase: :idle, next_message_id: next_message_id} = state
        ) do
-    {data, block, payload} = Payload.next_segment(message.payload, @default_payload_size)
+    # TODO: get payload size from the request control
+    {data, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     # TODO: allow control over the block size
-    multipart = Multipart.build(block, Block.control(block.size))
+    multipart = Multipart.build(block, Block.empty())
 
     # The server should send back the same message id of the request
     %{
@@ -313,7 +367,6 @@ defmodule CoAP.Connection do
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
     send(state.handler, {:error, {:timeout, state.phase}})
 
-    # TODO: exit the connection
     %{state | timer: nil}
   end
 
@@ -329,6 +382,8 @@ defmodule CoAP.Connection do
 
     timeout = timeout * 2
     timer = start_timer(timeout)
+
+    # TODO: instrument log/stat for each retry
 
     %{
       state
@@ -351,21 +406,6 @@ defmodule CoAP.Connection do
     timer = restart_timer(state.timer, @processing_delay)
 
     %{state | phase: :awaiting_app_ack, message: cached_response, timer: timer}
-  end
-
-  defp send_peer_ack(message, state) do
-    cancel_timer(state.timer)
-
-    response =
-      Message.response_for(
-        {message.code_class, message.code_detail},
-        message.payload,
-        message
-      )
-
-    reply(response, state)
-
-    %{state | phase: :peer_ack_sent, message: response, timer: nil}
   end
 
   # phase, type

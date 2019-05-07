@@ -68,10 +68,11 @@ CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 * [x] handle multiple parts for some headers, like "Uri-Path"
 * [x] coap client, ala httpoison
 * [x] message_id is started at a random int and incremented for a single connection
-* [x] block transfer
+* [x] block-wise transfer
+* [ ] handle timeouts and retries of block-wise transfers
 * [ ] accept block-wise transfer controls over size
 * [ ] respect block-wise transfer controls over size
-* [ ] respect block-wise transfer controls over block number
+* [x] respect block-wise transfer controls over block number
 * [ ] instrumentation of listener/adapter/handler in some way, using phx tools
 * [ ] support coaps scheme
 * [x] hostname support?

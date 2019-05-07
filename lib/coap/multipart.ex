@@ -18,7 +18,8 @@ defmodule CoAP.Multipart do
             more: false,
             number: 0,
             size: 0,
-            requested_size: 0
+            requested_size: 0,
+            requested_number: 0
 
   def build(_request, nil, nil), do: %__MODULE__{}
 
@@ -40,6 +41,7 @@ defmodule CoAP.Multipart do
       more: description.more,
       number: description.number,
       size: description.size,
+      requested_number: control.number,
       requested_size: control.size
     }
   end
