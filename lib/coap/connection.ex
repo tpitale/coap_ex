@@ -344,7 +344,8 @@ defmodule CoAP.Connection do
     }
     |> reply(state)
 
-    timer = restart_timer(state.timer, @ack_timeout)
+    timeout = @ack_timeout
+    timer = restart_timer(state.timer, timeout)
 
     %{
       state
@@ -352,7 +353,8 @@ defmodule CoAP.Connection do
         message: if(type == :con, do: message, else: nil),
         next_message_id: next_message_id(next_message_id),
         out_payload: payload,
-        timer: timer
+        timer: timer,
+        retry_timeout: timeout
     }
   end
 
