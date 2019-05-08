@@ -63,14 +63,14 @@ defmodule CoAP.Connection do
               next_message_id: nil
 
     def add_options(state, options) do
-      %{state | retries: options[:retries], retry_timeout: 0}
+      %{state | retries: options.retries, retry_timeout: options.timeout}
     end
   end
 
   defmodule Options do
     @max_retries 4
 
-    defstruct retries: @max_retries, retry_timeout: nil
+    defstruct retries: @max_retries, timeout: nil
   end
 
   # use CoAP.Transport
