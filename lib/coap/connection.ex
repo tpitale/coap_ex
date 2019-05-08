@@ -139,7 +139,8 @@ defmodule CoAP.Connection do
        port: port,
        token: token,
        next_message_id: next_message_id()
-     }}
+     }
+     |> State.add_options(options)}
   end
 
   def handle_info({:receive, %Message{} = message}, state) do
