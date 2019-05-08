@@ -3,6 +3,8 @@ defmodule CoAP.Message do
 
   alias CoAP.Multipart
 
+  # import Logger, only: [debug: 1]
+
   # @max_block_size 1024
 
   defstruct version: @version,
@@ -192,6 +194,17 @@ defmodule CoAP.Message do
         payload: "data",
         multipart: %CoAP.Multipart{control: %CoAP.Block{more: false, number: 0, size: 0}, description: %CoAP.Block{more: false, number: 0, size: 0}, more: false, multipart: false, number: 0},
         method: :get
+      }
+
+      iex> data = <<0x40, 0x01, 0x21, 0x27, 0xB3, 0x61, 0x70, 0x69, 0xC1, 0x15, 0xFF, 0x32, 0x24, 0x0A, 0x0C, 0x0A, 0x0A, 0x33, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x31, 0x36, 0x34, 0x12, 0x14, 0x30, 0x31, 0x30, 0x39, 0x32, 0x34, 0x35, 0x30, 0x46, 0x30, 0x41, 0x46, 0x6D, 0x63, 0x75, 0x2D, 0x65, 0x76, 0x74, 0x32>>
+      iex> message = CoAP.Message.decode(data)
+      iex> message.multipart
+      %CoAP.Multipart{
+        description: CoAP.Block.empty(),
+        control: %CoAP.Block{more: false, number: 1, size: 512},
+        multipart: true,
+        requested_number: 1,
+        requested_size: 512
       }
   """
   def decode(unquote(@message_header_format)) do

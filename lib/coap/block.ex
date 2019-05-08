@@ -10,6 +10,7 @@ defmodule CoAP.Block do
     %__MODULE__{number: number, more: more, size: size}
   end
 
+  def build(nil), do: empty()
   def empty(), do: %__MODULE__{}
   # def control(number), do: %__MODULE__{number: number}
 
