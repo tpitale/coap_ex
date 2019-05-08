@@ -43,8 +43,6 @@ defmodule CoAP.Connection do
   use GenServer
 
   defmodule State do
-    @max_retries 4
-
     # udp socket
     defstruct server: nil,
               # App
@@ -58,11 +56,21 @@ defmodule CoAP.Connection do
               phase: :idle,
               message: <<>>,
               timer: nil,
-              retries: @max_retries,
-              retry_timeout: 0,
+              retries: 0,
+              retry_timeout: nil,
               in_payload: CoAP.Payload.empty(),
               out_payload: CoAP.Payload.empty(),
               next_message_id: nil
+
+    def add_options(state, options) do
+      %{state | retries: options[:retries], retry_timeout: 0}
+    end
+  end
+
+  defmodule Options do
+    @max_retries 4
+
+    defstruct retries: @max_retries, retry_timeout: nil
   end
 
   # use CoAP.Transport
@@ -115,7 +123,7 @@ defmodule CoAP.Connection do
      }}
   end
 
-  def init([client, {ip, port, token} = peer]) do
+  def init([client, {ip, port, token} = peer, options]) do
     # client is the endpoint
     # peer is the target ip/port?
     endpoint = {CoAP.Adapters.Client, client}
@@ -354,7 +362,7 @@ defmodule CoAP.Connection do
         next_message_id: next_message_id(next_message_id),
         out_payload: payload,
         timer: timer,
-        retry_timeout: timeout
+        retry_timeout: state.retry_timeout || timeout
     }
   end
 

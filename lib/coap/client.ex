@@ -1,7 +1,8 @@
 defmodule CoAP.Client do
   alias CoAP.Message
+  alias CoAP.Connection.Options
 
-  @wait_timeout 30_000
+  @wait_timeout 10_000
 
   import Logger, only: [debug: 1]
 
@@ -23,12 +24,14 @@ defmodule CoAP.Client do
 
   def request(type, method, url), do: request(type, method, url, <<>>)
 
-  def request(type, method, url, content) do
+  def request(type, method, url, content, options \\ %{}) do
     uri = :uri_string.parse(url)
 
     host = uri[:host]
     port = uri[:port]
     token = :crypto.strong_rand_bytes(4)
+
+    options = struct(Options, options)
 
     {code_class, code_detail} = Message.encode_method(method)
 
@@ -45,7 +48,7 @@ defmodule CoAP.Client do
 
     debug("Client Request: #{inspect(message)}")
 
-    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}])
+    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}, options])
 
     send(connection, {:deliver, message})
 
