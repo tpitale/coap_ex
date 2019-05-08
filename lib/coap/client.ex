@@ -1,7 +1,7 @@
 defmodule CoAP.Client do
   alias CoAP.Message
 
-  @wait_timeout 10_000
+  @wait_timeout 30_000
 
   import Logger, only: [debug: 1]
 
@@ -49,15 +49,15 @@ defmodule CoAP.Client do
 
     send(connection, {:deliver, message})
 
-    await_response(message)
+    await_response(message, @wait_timeout)
   end
 
-  defp await_response(_message) do
+  defp await_response(_message, timeout) do
     receive do
       {:deliver, response, _peer} -> response
       {:error, reason} -> {:error, reason}
     after
-      @wait_timeout -> %Message{}
+      timeout -> %Message{}
     end
   end
 end
