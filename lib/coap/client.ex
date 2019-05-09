@@ -64,8 +64,7 @@ defmodule CoAP.Client do
       {:deliver, response, _peer} -> response
       {:error, reason} -> {:error, reason}
     after
-      # TODO: do we need a third bit of info that this was an await timeout?
-      timeout -> {:error, :timeout}
+      timeout -> {:error, {:timeout, :await_response}}
     end
   end
 end
