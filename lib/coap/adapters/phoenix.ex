@@ -3,6 +3,8 @@ defmodule CoAP.Adapters.Phoenix do
 
   alias CoAP.Phoenix.Request
 
+  import Logger, only: [warn: 1]
+
   @moduledoc """
   1. Take a message
   2. Convert to Plug.Conn
@@ -22,7 +24,9 @@ defmodule CoAP.Adapters.Phoenix do
   # unlikely to use, as this is not a client
   # def response(message, {endpoint, peer})
   # def ack({endpoint, _peer})
-  # def error({endpoint, _peer})
+  def error({endpoint, context}) do
+    warn("CoAP Endpoint #{inspect(endpoint)} received an error #{inspect(context)}")
+  end
 
   defp process(req, {endpoint, opts}) do
     # TODO: conn_from_message(message)

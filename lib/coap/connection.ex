@@ -85,9 +85,10 @@ defmodule CoAP.Connection do
 
   @default_payload_size 512
 
+  # gen_coap uses 2000 here
   @ack_timeout 500
-  # ack_timeout*0.5
-  # @ack_random_factor 1000
+  # gen_coap uses ack_timeout*0.5
+  @ack_random_factor 1000
 
   # standard allows 2000
   @processing_delay 1000
@@ -197,7 +198,7 @@ defmodule CoAP.Connection do
 
   # BLOCK-WISE TRANSFER: CLIENT REQUEST FOR NEXT BLOCK FROM SERVER
   defp receive_message(
-         %{multipart: %{requested_number: number}} = _message,
+         %{multipart: %{requested_number: number}, message_id: message_id} = _message,
          %{phase: :awaiting_peer_ack} = state
        )
        when number > 0 do
@@ -209,7 +210,7 @@ defmodule CoAP.Connection do
     # TODO: allow configurable control size for next block
     multipart = Multipart.build(block, Block.empty())
 
-    response = %{state.message | payload: bytes, multipart: multipart}
+    response = %{state.message | message_id: message_id, payload: bytes, multipart: multipart}
     reply(response, state)
 
     %{state | out_payload: next_payload, message: response}
@@ -222,7 +223,7 @@ defmodule CoAP.Connection do
          %{multipart: %{more: true, number: number, size: size}} = message,
          state
        ) do
-    restart_timer(state.timer, @ack_timeout)
+    restart_timer(state.timer, ack_timeout())
 
     # TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
@@ -310,6 +311,7 @@ defmodule CoAP.Connection do
 
     multipart = Multipart.build(block, Block.empty())
 
+    # Cancel the app_ack waiting timeout
     cancel_timer(state.timer)
 
     response =
@@ -353,7 +355,7 @@ defmodule CoAP.Connection do
     }
     |> reply(state)
 
-    timeout = @ack_timeout
+    timeout = ack_timeout()
     timer = restart_timer(state.timer, timeout)
 
     %{
@@ -451,6 +453,8 @@ defmodule CoAP.Connection do
   defp peer_for(%{ip: ip, port: port}), do: {ip, port}
 
   # TIMERS =====================================================================
+  defp ack_timeout(), do: @ack_timeout + :rand.uniform(@ack_random_factor)
+
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
   # defp cancel_timer(nil), do: nil
