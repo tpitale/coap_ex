@@ -1,10 +1,14 @@
 defmodule CoAP.Client do
   alias CoAP.Message
-  alias CoAP.Connection.Options
-
-  @wait_timeout 10_000
 
   import Logger, only: [debug: 1]
+
+  defmodule Options do
+    @max_retries 4
+    @wait_timeout 10_000
+
+    defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout
+  end
 
   # TODO: options: headers/params?
 
@@ -52,7 +56,7 @@ defmodule CoAP.Client do
 
     send(connection, {:deliver, message})
 
-    await_response(message, @wait_timeout)
+    await_response(message, options.timeout)
   end
 
   defp await_response(_message, timeout) do
@@ -60,7 +64,8 @@ defmodule CoAP.Client do
       {:deliver, response, _peer} -> response
       {:error, reason} -> {:error, reason}
     after
-      timeout -> %Message{}
+      # TODO: do we need a third bit of info that this was an await timeout?
+      timeout -> {:error, :timeout}
     end
   end
 end
