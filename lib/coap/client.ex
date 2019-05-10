@@ -26,9 +26,7 @@ defmodule CoAP.Client do
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)
 
-  def request(type, method, url), do: request(type, method, url, <<>>)
-
-  def request(type, method, url, content, options \\ %{}) do
+  def request(type, method, url, content \\ <<>>, options \\ %{}) do
     uri = :uri_string.parse(url)
 
     host = uri[:host]
