@@ -202,7 +202,7 @@ defmodule CoAP.Connection do
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
 
     # TODO: allow configurable control size for next block
-    multipart = Multipart.build(block, Block.empty())
+    multipart = Multipart.build(block, nil)
 
     response = %{state.message | message_id: message_id, payload: bytes, multipart: multipart}
     reply(response, state)
@@ -221,7 +221,7 @@ defmodule CoAP.Connection do
 
     # TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
-    multipart = Multipart.build(Block.empty(), Block.build({number + 1, false, size}))
+    multipart = Multipart.build(nil, Block.build({number + 1, false, size}))
 
     # alternatively message.verb == nil => client
     response =
@@ -303,7 +303,7 @@ defmodule CoAP.Connection do
     # TODO: does the message include the original request control?
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
-    multipart = Multipart.build(block, Block.empty())
+    multipart = Multipart.build(block, nil)
 
     # Cancel the app_ack waiting timeout
     cancel_timer(state.timer)
@@ -338,7 +338,7 @@ defmodule CoAP.Connection do
     {data, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     # TODO: allow control over the block size
-    multipart = Multipart.build(block, Block.empty())
+    multipart = Multipart.build(block, nil)
 
     # The server should send back the same message id of the request
     %{

@@ -200,7 +200,7 @@ defmodule CoAP.Message do
       iex> message = CoAP.Message.decode(data)
       iex> message.multipart
       %CoAP.Multipart{
-        description: CoAP.Block.empty(),
+        description: %CoAP.Block{},
         control: %CoAP.Block{more: false, number: 1, size: 512},
         multipart: true,
         requested_number: 1,

@@ -46,11 +46,31 @@ defmodule CoAP.Multipart do
     }
   end
 
+  def build(nil, %Block{} = control) do
+    %__MODULE__{
+      multipart: true,
+      control: control,
+      requested_number: control.number,
+      requested_size: control.size
+    }
+  end
+
+  def build(%Block{} = description, nil) do
+    %__MODULE__{
+      multipart: true,
+      description: description,
+      more: description.more,
+      number: description.number,
+      size: description.size
+    }
+  end
+
   def as_blocks(true, multipart) do
     %{
       block1: multipart.description |> Block.to_tuple(),
       block2: multipart.control |> Block.to_tuple()
     }
+    |> reject_nil_values()
   end
 
   # TODO: if we get nil here, that's wrong
@@ -59,5 +79,12 @@ defmodule CoAP.Multipart do
       block1: multipart.control |> Block.to_tuple(),
       block2: multipart.description |> Block.to_tuple()
     }
+    |> reject_nil_values()
+  end
+
+  defp reject_nil_values(blocks) do
+    blocks
+    |> Enum.reject(fn {_, v} -> is_nil(v) end)
+    |> Enum.into(%{})
   end
 end

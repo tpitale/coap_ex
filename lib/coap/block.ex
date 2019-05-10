@@ -10,10 +10,9 @@ defmodule CoAP.Block do
     %__MODULE__{number: number, more: more, size: size}
   end
 
-  def build(nil), do: empty()
-  def empty(), do: %__MODULE__{}
-  # def control(number), do: %__MODULE__{number: number}
+  def build(nil), do: nil
 
+  def to_tuple(nil), do: nil
   def to_tuple(%__MODULE__{} = block), do: {block.number, block.more, block.size}
   def to_tuple(block) when is_tuple(block), do: block
 
