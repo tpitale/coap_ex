@@ -169,7 +169,7 @@ defmodule CoAP.Message do
           uri_query: ["who=world"]
         },
         payload: "payload",
-        multipart: %CoAP.Multipart{control: %CoAP.Block{more: false, number: 0, size: 0}, description: %CoAP.Block{more: false, number: 0, size: 0}, more: false, multipart: false, number: 0},
+        multipart: %CoAP.Multipart{control: nil, description: nil, more: false, multipart: false, number: 0},
         method: :put
       }
 
@@ -192,7 +192,7 @@ defmodule CoAP.Message do
            uri_host: "localhost"
         },
         payload: "data",
-        multipart: %CoAP.Multipart{control: %CoAP.Block{more: false, number: 0, size: 0}, description: %CoAP.Block{more: false, number: 0, size: 0}, more: false, multipart: false, number: 0},
+        multipart: %CoAP.Multipart{control: nil, description: nil, more: false, multipart: false, number: 0},
         method: :get
       }
 
@@ -200,7 +200,7 @@ defmodule CoAP.Message do
       iex> message = CoAP.Message.decode(data)
       iex> message.multipart
       %CoAP.Multipart{
-        description: %CoAP.Block{},
+        description: nil,
         control: %CoAP.Block{more: false, number: 1, size: 512},
         multipart: true,
         requested_number: 1,
@@ -274,6 +274,19 @@ defmodule CoAP.Message do
 
   defp status_for(0, _code_detail), do: nil
   defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
+
+  def next_message(%__MODULE__{} = message, next_message_id) do
+    %__MODULE__{
+      type: message.type,
+      code_class: message.code_class,
+      code_detail: message.code_detail,
+      token: message.token,
+      message_id: next_message_id,
+      method: message.method,
+      options: message.options,
+      request: message.request
+    }
+  end
 
   def response_for(%__MODULE__{type: :con} = message) do
     %__MODULE__{

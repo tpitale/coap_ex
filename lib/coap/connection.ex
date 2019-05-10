@@ -201,8 +201,9 @@ defmodule CoAP.Connection do
     # Payload should calculate byte offset from next number
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
 
-    # TODO: allow configurable control size for next block
     multipart = Multipart.build(block, nil)
+
+    # phase = if multipart.more, do: :awaiting_peer_ack, else: :app_ack_sent
 
     response = %{state.message | message_id: message_id, payload: bytes, multipart: multipart}
     reply(response, state)
@@ -227,9 +228,13 @@ defmodule CoAP.Connection do
     response =
       case message.status do
         # client sends original message with new control number
-        {:ok, _} -> state.message
+        # TODO: what parts of the message are we supposed to send back?
+        {:ok, _} ->
+          Message.next_message(state.message, next_message_id(state.message.message_id))
+
         # server sends ok, continue
-        _ -> Message.response_for({:ok, :continue}, message)
+        _ ->
+          Message.response_for({:ok, :continue}, message)
       end
 
     response = %{response | multipart: multipart}
@@ -303,8 +308,6 @@ defmodule CoAP.Connection do
     # TODO: does the message include the original request control?
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
-    multipart = Multipart.build(block, nil)
-
     # Cancel the app_ack waiting timeout
     cancel_timer(state.timer)
 
@@ -315,7 +318,7 @@ defmodule CoAP.Connection do
         message
       )
 
-    response = %{response | multipart: multipart}
+    response = %{response | multipart: Multipart.build(block, nil)}
 
     reply(response, state)
 
@@ -337,7 +340,6 @@ defmodule CoAP.Connection do
     # TODO: get payload size from the request control
     {data, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
-    # TODO: allow control over the block size
     multipart = Multipart.build(block, nil)
 
     # The server should send back the same message id of the request
@@ -374,6 +376,7 @@ defmodule CoAP.Connection do
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
     send(state.handler, {:error, {:timeout, state.phase}})
 
+    # TODO: is this the connection exit point?
     %{state | timer: nil}
   end
 
@@ -385,8 +388,10 @@ defmodule CoAP.Connection do
            retries: retries
          } = state
        ) do
+    # retry delivering the cached message
     reply(message, state)
 
+    # TODO: exponential backoff
     timeout = timeout * 2
     timer = start_timer(timeout)
 

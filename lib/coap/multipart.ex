@@ -13,8 +13,8 @@ defmodule CoAP.Multipart do
 
   # TODO: redefine as description/control based on request/response
   defstruct multipart: false,
-            description: %Block{},
-            control: %Block{},
+            description: nil,
+            control: nil,
             more: false,
             number: 0,
             size: 0,
@@ -49,6 +49,7 @@ defmodule CoAP.Multipart do
   def build(nil, %Block{} = control) do
     %__MODULE__{
       multipart: true,
+      description: nil,
       control: control,
       requested_number: control.number,
       requested_size: control.size
@@ -56,14 +57,25 @@ defmodule CoAP.Multipart do
   end
 
   def build(%Block{} = description, nil) do
-    %__MODULE__{
-      multipart: true,
-      description: description,
-      more: description.more,
-      number: description.number,
-      size: description.size
-    }
+    case {description.more, description.number} do
+      {false, 0} ->
+        # Return nil if this is the first block, and there are no more
+        # as this is not a multipart payload
+        nil
+
+      _ ->
+        %__MODULE__{
+          multipart: true,
+          description: description,
+          control: nil,
+          more: description.more,
+          number: description.number,
+          size: description.size
+        }
+    end
   end
+
+  def build(nil, nil), do: %__MODULE__{multipart: false, description: nil, control: nil}
 
   def as_blocks(true, multipart) do
     %{
