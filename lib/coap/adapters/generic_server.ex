@@ -5,5 +5,7 @@ defmodule CoAP.Adapters.GenericServer do
     |> deliver(owner)
   end
 
+  def error({_endpoint, %{reason: {:timeout, _phase}}}), do: nil
+
   defp deliver(result, owner), do: send(owner, {:deliver, result})
 end
