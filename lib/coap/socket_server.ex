@@ -49,33 +49,35 @@ defmodule CoAP.SocketServer do
 
   def handle_info(
         {:udp, _socket, peer_ip, peer_port, data},
-        %{monitors: monitors, connections: connections, endpoint: endpoint} = state
+        %{endpoint: endpoint} = state
       ) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
     message = Message.decode(data)
     # token = token_for(data) # may cause an issue if we don't get a valid coap message
     connection_id = {peer_ip, peer_port, message.token}
+    connection = Map.get(state.connections, connection_id)
 
-    connection =
-      case Map.get(connections, connection_id) ||
-             start_connection(self(), endpoint, connection_id) do
-        {:ok, conn} -> conn
-        conn -> conn
+    {connection, connections, monitors} =
+      case connection do
+        nil ->
+          {:ok, conn} = start_connection(self(), endpoint, connection_id)
+
+          {
+            conn,
+            Map.put(state.connections, connection_id, conn),
+            Map.put(state.monitors, Process.monitor(conn), connection_id)
+          }
+
+        _ ->
+          {connection, state.connections, state.monitors}
       end
-
-    ref = Process.monitor(connection)
 
     # TODO: if it's alive?
     send(connection, {:receive, message})
     # TODO: error if dead process
 
-    {:noreply,
-     %{
-       state
-       | connections: Map.put(connections, connection_id, connection),
-         monitors: Map.put(monitors, ref, connection_id)
-     }}
+    {:noreply, %{state | connections: connections, monitors: monitors}}
   end
 
   # TODO: accept data for replies
@@ -110,7 +112,7 @@ defmodule CoAP.SocketServer do
     connection_id = Map.get(monitors, ref)
 
     debug(
-      "CoAP socket received DOWN:#{reason} in CoAP.SocketServer from: #{inspect(connection_id)}"
+      "CoAP socket received DOWN:#{reason} in CoAP.SocketServer from:#{inspect(connection_id)}"
     )
 
     {:noreply,
