@@ -79,10 +79,11 @@ defmodule CoAP.Connection do
 
   @default_payload_size 512
 
-  # gen_coap uses 2000 here
-  @ack_timeout 500
+  # 2s is the spec default
+  @ack_timeout 2000
+  # 1.5 is the spec default
   # gen_coap uses ack_timeout*0.5
-  @ack_random_factor 1000
+  @ack_random_factor 1500
 
   # standard allows 2000
   @processing_delay 1000

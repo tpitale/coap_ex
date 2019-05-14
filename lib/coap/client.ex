@@ -4,6 +4,7 @@ defmodule CoAP.Client do
   import Logger, only: [debug: 1]
 
   defmodule Options do
+    # spec default for max_retransmits
     @max_retries 4
     @wait_timeout 10_000
 
