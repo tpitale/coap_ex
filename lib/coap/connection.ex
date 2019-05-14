@@ -376,8 +376,7 @@ defmodule CoAP.Connection do
   defp timeout(%{phase: :awaiting_peer_ack, retries: 0} = state) do
     send(state.handler, {:error, {:timeout, state.phase}})
 
-    # TODO: is this the connection exit point?
-    %{state | timer: nil}
+    %{state | timer: nil, phase: next_phase(:awaiting_peer_ack, nil)}
   end
 
   defp timeout(
