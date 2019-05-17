@@ -1,4 +1,23 @@
 defmodule CoAP.SocketServer do
+  @moduledoc """
+    CoAP.SocketServer holds a reference to a server, or is held by a client.
+    It contains the UDP port either listening (for a server) or used by a client.
+
+    When a new UDP packet is received, the socket_server attempts to look up an
+    existing connection, or establish a new connection as necessary.
+
+    This registry of connections is mapped by a connection_id, a tuple of
+    `{ip, port, token}` so that subsequent messages exchanged will be routed
+    to the appropriate `CoAP.Connection`.
+
+    A socket_server should generally not be started directly. It will be started
+    automatically by a `CoAP.Client` or by a server like `CoAP.Phoenix.Listener`.
+
+    A socket_server will receive and handle a few messages. `:udp` from the udp socket,
+    `:deliver` from the `CoAP.Connection` when a message is being sent, and `:DOWN`
+    when a monitored connection is complete and the process ends.
+  """
+
   use GenServer
 
   import CoAP.Util.BinaryFormatter, only: [to_hex: 1]

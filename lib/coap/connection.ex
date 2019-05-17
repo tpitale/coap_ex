@@ -1,8 +1,19 @@
 defmodule CoAP.Connection do
   @moduledoc """
-    Maintains a connection to a peer
+    CoAP.Connection is the bridge between a local `app` (either a `CoAP.Client` or a server)
+    and the `peer` socket for a remote CoAP client or server.
+
+    This process maintains the state for the connection and handles passing
+    messages between `app` and `peer`.
+
     Either as a server for each connection id {id,port,token} from a socket_server
-    Or as a client
+    Or as a client.
+
+    A connection should not be started directly, it will be started as necessary
+    by a socket_server and managed through that process.
+
+    A connection handles 3 public messages: `deliver`, `receive`, and `timeout`.
+    A timeout is received from the timers we set during different phases.
 
     Phases:
     ----------------------------------------------------------------------------
@@ -24,20 +35,45 @@ defmodule CoAP.Connection do
     | got_reset -> ?
     ----------------------------------------------------------------------------
 
-    client always makes requests
-    client receive_message is a response
-    client deliver_message is a request
-    client receives status
-    client delivers verb
-    receive + status => client
-    deliver + verb => client
-    server always makes responses
-    server receive message is a request
-    server deliver_message is a response
-    server receives verb
-    server delivers status
-    deliver + status => server
-    receive + verb => server
+    Message Types:
+    * con - confirmable, should receive an ack from the peer
+    * non - nonconfirmable, a fire and forget message
+    * ack - acknowledge a con
+    * rst - reset
+
+    Truisms:
+      * client always makes requests
+      * client receive_message is a response
+      * client deliver_message is a request
+      * client receives status
+      * client delivers verb
+      * receive + status => client
+      * deliver + verb => client
+      * server always makes responses
+      * server receive message is a request
+      * server deliver_message is a response
+      * server receives verb
+      * server delivers status
+      * deliver + status => server
+      * receive + verb => server
+
+    A new connection always begins in the `:idle` phase. When any message
+    is received (from peer) or sent (`delivered` from the app), the connection
+    starts moving through phases and keeps an appropriate timeout.
+
+    When an a message is received and passed to the `app`, a timer is started for
+    the app/server to reply. If not, a canned response is sent and the peer will
+    have to make a followup request for the full response from the app.
+
+    When a message is delivered to the peer a timer is started for the peer to ack.
+    If an ack is not received, the message delivery is retried up to a point.
+
+    Block-wise transfers, aka Multipart in `coap_ex`, complicates the message
+    phase by effectively stalling it while N messages are received/delivered for
+    each block of a payload. The payload is maintained as in or out within the
+    process state. Once the final message is delivered or received, the assembled
+    payload is passed with the original message through the normal phases of the
+    connection.
   """
 
   use GenServer
@@ -66,9 +102,6 @@ defmodule CoAP.Connection do
       %{state | retries: options.retries, retry_timeout: options.retry_timeout}
     end
   end
-
-  # use CoAP.Transport
-  # use CoAP.Responder
 
   import Logger, only: [info: 1]
 
@@ -106,6 +139,14 @@ defmodule CoAP.Connection do
 
   # TODO: predefined defaults, merged with client/server-specific options
   # TODO: default adapter to GenericServer?
+  @doc """
+    `init` function for Server process
+
+    `server` is the SocketServer process for the server `app`
+    Wrap the adapter (Phoenix or GenericServer) and endpoint (actual "server") in a handler
+
+    Return {:ok, state}
+  """
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
@@ -119,6 +160,17 @@ defmodule CoAP.Connection do
      }}
   end
 
+  @doc """
+    `init` for Client usage
+
+    `client`: `CoAP.Client`
+    `endpoint`: the wrapped client in an adapter
+    `server`: SocketServer started for the endpoint and peer tuple
+
+    Wrap the adapter and the client in a handler
+
+    Return {:ok, state}
+  """
   def init([client, {ip, port, token} = peer, options]) do
     # client is the endpoint
     # peer is the target ip/port?
@@ -192,21 +244,36 @@ defmodule CoAP.Connection do
   defp receive_message(_message, %{phase: :got_non} = state), do: state
 
   # BLOCK-WISE TRANSFER: CLIENT REQUEST FOR NEXT BLOCK FROM SERVER
+  # Receive a message with a multipart (block-wise transfer component)
+  # This message includes a requested_number to return the next block in the full payload
+  #
+  # 1. restart the timer for ack_timeout from the peer
+  # 2. Take the out payload
+  # 3. Fetch the next block given the requested_number
+  # 4. Build a response, using the same message_id from the request
+  # 5. Add the payload bytes for this block
+  # 6. Add the description of this block to the message as multipart
+  # 7. Send the message back to the client
+  # 8. Store the out_payload and cache the response in state
   defp receive_message(
          %{multipart: %{requested_number: number}, message_id: message_id} = _message,
          %{phase: :awaiting_peer_ack} = state
        )
        when number > 0 do
-    restart_timer(state.timer, @ack_timeout)
+    restart_timer(state.timer, ack_timeout())
 
     # Payload should calculate byte offset from next number
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
 
-    multipart = Multipart.build(block, nil)
-
     # phase = if multipart.more, do: :awaiting_peer_ack, else: :app_ack_sent
 
-    response = %{state.message | message_id: message_id, payload: bytes, multipart: multipart}
+    response = %{
+      state.message
+      | message_id: message_id,
+        payload: bytes,
+        multipart: Multipart.build(block, nil)
+    }
+
     reply(response, state)
 
     %{state | out_payload: next_payload, message: response}
@@ -215,6 +282,15 @@ defmodule CoAP.Connection do
   # BLOCK-WISE TRANSFER:
   #   PUT/POST REQUEST WITH BODY AS SERVER
   #   RESPONSE FROM SERVER AS CLIENT
+  # Receive a message from the peer which contains a block of a payload
+  #
+  # 1. restart the timer for ack_timeout from the peer
+  # 2. Build the request for the next blaock
+  # 3. Build a response, using the next message_id when we're making a subsequent request as a client
+  # 3. As a server, we are receiving a payload, so send a response of {:ok, :continue} to get the next block
+  # 4. Add the control for the block we want next to the message as multipart
+  # 5. Send the message back to the client
+  # 6. Add the block to the in_payload, cache the message and store in state
   defp receive_message(
          %{multipart: %{more: true, number: number, size: size}} = message,
          state
@@ -248,6 +324,9 @@ defmodule CoAP.Connection do
     }
   end
 
+  # Receive the last block in a multipart transfer
+  # Add the block to the in_payload
+  # then proceed to receive the message as if it was not multipart
   defp receive_message(
          %{multipart: %{more: false, number: number}} = message,
          state
@@ -269,7 +348,7 @@ defmodule CoAP.Connection do
   end
 
   # con, method, request (server)
-  # con, response (client)
+  # con, status, response (client)
   defp receive_message(%Message{type: :con} = message, %{phase: :idle} = state) do
     handle(message, state.handler, peer_for(state))
 
@@ -277,7 +356,7 @@ defmodule CoAP.Connection do
   end
 
   # non, method, request (server)
-  # non, response (client)
+  # non, status, response (client)
   defp receive_message(%Message{type: :non} = message, %{phase: :idle} = state) do
     handle(message, state.handler, peer_for(state))
 
@@ -339,16 +418,14 @@ defmodule CoAP.Connection do
          %{phase: :idle, next_message_id: next_message_id} = state
        ) do
     # TODO: get payload size from the request control
-    {data, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
-
-    multipart = Multipart.build(block, nil)
+    {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     # The server should send back the same message id of the request
     %{
       message
       | message_id: message_id || next_message_id,
-        payload: data,
-        multipart: multipart
+        payload: bytes,
+        multipart: Multipart.build(block, nil)
     }
     |> reply(state)
 

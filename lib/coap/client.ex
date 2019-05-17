@@ -1,4 +1,7 @@
 defmodule CoAP.Client do
+  @moduledoc """
+    CoAP Client interface
+  """
   alias CoAP.Message
 
   import Logger, only: [debug: 1]
