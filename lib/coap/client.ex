@@ -6,30 +6,48 @@ defmodule CoAP.Client do
 
   import Logger, only: [debug: 1]
 
+  @type request_url :: binary
+  @type request_type :: :con | :non | :ack | :reset
+  @type request_method :: :get | :post | :put | :delete
+  @type response :: binary | {:error, any}
+
   defmodule Options do
     # spec default for max_retransmits
     @max_retries 4
     @wait_timeout 10_000
+
+    @type t :: %__MODULE{retries: integer, retry_timeout: integer, timeout: integer}
 
     defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout
   end
 
   # TODO: options: headers/params?
 
+  @spec get(request_url) :: response
   def get(url), do: con(:get, url)
+  @spec get(request_url, binary) :: response
   def get(url, content), do: con(:get, url, content)
+  @spec post(request_url) :: response
   def post(url), do: con(:post, url)
+  @spec post(request_url, binary) :: response
   def post(url, content), do: con(:post, url, content)
+  @spec put(request_url) :: response
   def put(url), do: con(:put, url)
+  @spec put(request_url, binary) :: response
   def put(url, content), do: con(:put, url, content)
+  @spec delete(request_url) :: response
   def delete(url), do: con(:delete, url)
 
+  @spec con(request_method, request_url) :: response
   def con(method, url), do: request(:con, method, url)
+  @spec con(request_method, request_url, binary) :: response
   def con(method, url, content), do: request(:con, method, url, content)
   # defp non(method, url), do: request(:non, method, url)
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)
 
+  @spec request(request_type, request_method, request_url, optional(binary), optional(map)) ::
+          response
   def request(type, method, url, content \\ <<>>, options \\ %{}) do
     uri = :uri_string.parse(url)
 
