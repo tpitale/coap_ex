@@ -16,7 +16,7 @@ defmodule CoAP.Client do
     @max_retries 4
     @wait_timeout 10_000
 
-    @type t :: %__MODULE{retries: integer, retry_timeout: integer, timeout: integer}
+    @type t :: %__MODULE__{retries: integer, retry_timeout: integer, timeout: integer}
 
     defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout
   end
@@ -46,7 +46,7 @@ defmodule CoAP.Client do
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)
 
-  @spec request(request_type, request_method, request_url, optional(binary), optional(map)) ::
+  @spec request(request_type, request_method, request_url, binary, map) ::
           response
   def request(type, method, url, content \\ <<>>, options \\ %{}) do
     uri = :uri_string.parse(url)

@@ -20,6 +20,20 @@ defmodule CoAP.Message do
             multipart: nil,
             payload: <<>>
 
+  @type t :: %__MODULE__{
+          version: integer,
+          type: request_type,
+          request: boolean,
+          code_class: integer,
+          code_detail: integer,
+          method: request_method | {integer, integer},
+          status: integer,
+          message_id: integer,
+          token: binary,
+          options: map,
+          multipart: CoAP.Multipart.t()
+        }
+
   @payload_marker 0xFF
 
   @methods %{
@@ -59,6 +73,8 @@ defmodule CoAP.Message do
   }
   @methods_map Enum.into(@methods, %{}, fn {k, v} -> {v, k} end)
 
+  @type request_method :: :get | :post | :put | :delete
+
   @types %{
     0 => :con,
     1 => :non,
@@ -66,6 +82,8 @@ defmodule CoAP.Message do
     3 => :reset
   }
   @types_map Enum.into(@types, %{}, fn {k, v} -> {v, k} end)
+
+  @type request_type :: :con | :non | :ack | :reset
 
   @message_header_format (quote do
                             <<
@@ -102,6 +120,7 @@ defmodule CoAP.Message do
       <<0x44, 0x03, 0x31, 0xfc, 0x7b, 0x5c, 0xd3, 0xde, 0xb8, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49, 0x77, 0x68, 0x6f, 0x3d, 0x77, 0x6f, 0x72, 0x6c, 0x64, 0xff, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64>>
 
   """
+  @spec encode(t()) :: binary
   def encode(%__MODULE__{multipart: %Multipart{}} = message) do
     # Always check code_detail in case the message was made directly, not decoded
     blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
@@ -110,6 +129,7 @@ defmodule CoAP.Message do
     |> encode()
   end
 
+  @spec encode(t()) :: binary
   def encode(%__MODULE__{
         version: version,
         type: type,
@@ -139,7 +159,9 @@ defmodule CoAP.Message do
     >>
   end
 
+  @spec encode_type(request_type()) :: integer
   defp encode_type(type) when is_atom(type), do: @types_map[type]
+  @spec decode_type(integer) :: request_type()
   defp decode_type(type) when is_integer(type), do: @types[type]
 
   # set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->
@@ -207,6 +229,7 @@ defmodule CoAP.Message do
         requested_size: 512
       }
   """
+  @spec decode(binary) :: t()
   def decode(unquote(@message_header_format)) do
     <<
       token::binary-size(token_length),
@@ -233,12 +256,14 @@ defmodule CoAP.Message do
     }
   end
 
+  @spec encode_status(integer) :: {integer, integer}
   def encode_status(status) when is_integer(status) do
     [code_class | code_detail] = Integer.digits(status)
 
     {code_class, code_detail |> Integer.undigits()}
   end
 
+  @spec encode_method(request_method()) :: {integer, integer}
   def encode_method(method), do: @methods_map[method]
 
   @doc """
@@ -262,11 +287,15 @@ defmodule CoAP.Message do
 
   """
   # TODO: test if either block1 or block2 is nil
+  @spec multipart(boolean, %{block1: CoAP.Block.tuple_t(), block2: CoAP.Block.tuple_t()}) ::
+          CoAP.Multipart.t()
   def multipart(request, options) do
     Multipart.build(request, options[:block1], options[:block2])
   end
 
+  @spec request?(0) :: true
   defp request?(0), do: true
+  @spec request?(any) :: false
   defp request?(_), do: false
 
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
