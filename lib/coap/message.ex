@@ -74,6 +74,8 @@ defmodule CoAP.Message do
   @methods_map Enum.into(@methods, %{}, fn {k, v} -> {v, k} end)
 
   @type request_method :: :get | :post | :put | :delete
+  @type status_code :: {integer, integer}
+  @type status_t :: {atom, atom}
 
   @types %{
     0 => :con,
@@ -298,12 +300,17 @@ defmodule CoAP.Message do
   @spec request?(any) :: false
   defp request?(_), do: false
 
+  @spec method_for(0, integer) :: request_method()
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
+  @spec method_for(any, any) :: nil
   defp method_for(_code_class, _code_detail), do: nil
 
+  @spec status_for(0, any) :: nil
   defp status_for(0, _code_detail), do: nil
+  @spec status_for(integer, integer) :: status_t
   defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
 
+  @spec next_message(t(), integer) :: t()
   def next_message(%__MODULE__{} = message, next_message_id) do
     %__MODULE__{
       type: message.type,
@@ -317,6 +324,7 @@ defmodule CoAP.Message do
     }
   end
 
+  @spec response_for(t()) :: t()
   def response_for(%__MODULE__{type: :con} = message) do
     %__MODULE__{
       type: :ack,
@@ -325,6 +333,7 @@ defmodule CoAP.Message do
     }
   end
 
+  @spec response_for(t()) :: t()
   def response_for(%__MODULE__{type: :non} = message) do
     %__MODULE__{
       type: :non,
@@ -333,12 +342,14 @@ defmodule CoAP.Message do
   end
 
   # TODO: example for ok, continue
+  @spec response_for(request_method(), t()) :: t()
   def response_for(method, message) do
     {code_class, code_detail} = encode_method(method)
 
     %__MODULE__{response_for(message) | code_class: code_class, code_detail: code_detail}
   end
 
+  @spec response_for(status_code, binary, t()) :: t()
   def response_for({code_class, code_detail}, payload, message) do
     %__MODULE__{
       response_for(message)
@@ -348,10 +359,12 @@ defmodule CoAP.Message do
     }
   end
 
+  @spec response_for(request_method(), binary, t()) :: t()
   def response_for(method, payload, message) do
     %__MODULE__{response_for(message) | method: method, payload: payload}
   end
 
+  @spec ack_for(t()) :: t()
   def ack_for(%__MODULE__{} = message) do
     %__MODULE__{
       type: :ack,
