@@ -32,6 +32,12 @@ defmodule CoAP.SocketServer do
   # init with port 5163/config (server), or 0 (client)
 
   # endpoint => server
+  @doc """
+    init function for a server e.g., phoenix endpoint
+
+    Open a udp socket on the given port and store in state
+    Initialize connections and monitors empty maps in state
+  """
   def init([port, endpoint]) do
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
@@ -40,6 +46,13 @@ defmodule CoAP.SocketServer do
 
   # Used by Connection to start a udp port
   # endpoint => client
+  @doc """
+    init function for a client
+
+    Opens a socket for sending (and receiving responses on a random listener)
+    Does not listen on any known port for new messages
+    Started by a `Connection` to deliver a client request message
+  """
   def init([endpoint, {host, port, token}, connection]) do
     {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
 
@@ -59,47 +72,26 @@ defmodule CoAP.SocketServer do
      }}
   end
 
-  def server?(pid), do: GenServer.call(pid, :server)
-  def client?(pid), do: !server?(pid)
-
-  def handle_call(:server, %{port: port} = state) do
-    {:reply, port > 0, state}
-  end
-
-  def handle_info(
-        {:udp, _socket, peer_ip, peer_port, data},
-        %{endpoint: endpoint} = state
-      ) do
+  @doc """
+    Receive udp packets, forward to the appropriate connection
+  """
+  def handle_info({:udp, _socket, peer_ip, peer_port, data}, state) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
     message = Message.decode(data)
-    # token = token_for(data) # may cause an issue if we don't get a valid coap message
-    connection_id = {peer_ip, peer_port, message.token}
-    connection = Map.get(state.connections, connection_id)
 
-    {connection, connections, monitors} =
-      case connection do
-        nil ->
-          {:ok, conn} = start_connection(self(), endpoint, connection_id)
-
-          {
-            conn,
-            Map.put(state.connections, connection_id, conn),
-            Map.put(state.monitors, Process.monitor(conn), connection_id)
-          }
-
-        _ ->
-          {connection, state.connections, state.monitors}
-      end
+    {connection, new_state} = connection_for({peer_ip, peer_port, message.token}, state)
 
     # TODO: if it's alive?
     send(connection, {:receive, message})
     # TODO: error if dead process
 
-    {:noreply, %{state | connections: connections, monitors: monitors}}
+    {:noreply, new_state}
   end
 
-  # TODO: accept data for replies
+  @doc """
+    Deliver messages to be sent to a peer
+  """
   def handle_info({:deliver, message, {host, port} = _peer}, %{socket: socket} = state) do
     data = Message.encode(message)
 
@@ -112,21 +104,11 @@ defmodule CoAP.SocketServer do
     {:noreply, state}
   end
 
-  # TODO: move to Message?
-  # defp token_for(<<
-  #   _version_type::binary-size(4),
-  #   token_length::unsigned-integer-size(4),
-  #   _unused::binary-size(24),
-  #   payload::binary
-  # >>) do
-  #   # TODO: Should we just use Message.decode().token?
-  #   <<token::binary-size(token_length), _rest:: binary>> = payload
-  #
-  #   token
-  # end
-
   # TODO: Do we need to do this when using connection supervisor?
-  # TODO: Can we use this to remove dead connections?
+  @doc """
+    Handles message for completed connection
+    Removes complete connection from the registry and monitoring
+  """
   def handle_info({:DOWN, ref, :process, _from, reason}, %{monitors: monitors} = state) do
     connection_id = Map.get(monitors, ref)
 
@@ -140,6 +122,27 @@ defmodule CoAP.SocketServer do
        | connections: Map.delete(state.connections, connection_id),
          monitors: Map.delete(monitors, ref)
      }}
+  end
+
+  defp connection_for(connection_id, state) do
+    connection = Map.get(state.connections, connection_id)
+
+    case connection do
+      nil ->
+        {:ok, conn} = start_connection(self(), state.endpoint, connection_id)
+
+        {
+          conn,
+          %{
+            state
+            | connections: Map.put(state.connections, connection_id, conn),
+              monitors: Map.put(state.monitors, Process.monitor(conn), connection_id)
+          }
+        }
+
+      _ ->
+        {connection, state}
+    end
   end
 
   # TODO: move to CoAP
