@@ -24,7 +24,9 @@ defmodule Coap.MixProject do
     [
       {:plug, "~> 1.0"},
       {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]},
-      {:stream_data, "~> 0.1", only: :test}
+      {:stream_data, "~> 0.1", only: :test},
+      {:dialyxir, "~> 1.0.0-rc.6", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.19", only: :dev, runtime: false}
     ]
   end
 end

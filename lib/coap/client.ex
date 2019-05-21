@@ -9,7 +9,7 @@ defmodule CoAP.Client do
   @type request_url :: binary
   @type request_type :: :con | :non | :ack | :reset
   @type request_method :: :get | :post | :put | :delete
-  @type response :: binary | {:error, any}
+  @type response :: CoAP.Message.t() | {:error, any}
 
   defmodule Options do
     # spec default for max_retransmits
@@ -23,29 +23,69 @@ defmodule CoAP.Client do
 
   # TODO: options: headers/params?
 
-  @spec get(request_url) :: response
-  def get(url), do: con(:get, url)
+  @doc """
+    Perform a confirmable, GET request to a URL
+    Returns a `CoAP.Message` response, or an error tuple
+    Optionally takes a binary content payload
+
+    CoAP.Client.get("coap://localhost:5683/api/")
+  """
   @spec get(request_url, binary) :: response
-  def get(url, content), do: con(:get, url, content)
-  @spec post(request_url) :: response
-  def post(url), do: con(:post, url)
+  def get(url, content \\ <<>>), do: con(:get, url, content)
+
+  @doc """
+    Perform a confirmable, POST request to a URL
+    Returns a `CoAP.Message` response, or an error tuple
+    Optionally takes a binary content payload
+
+    CoAP.Client.post("coap://localhost:5683/api/", <<0x00, 0x01, …>>)
+  """
   @spec post(request_url, binary) :: response
-  def post(url, content), do: con(:post, url, content)
-  @spec put(request_url) :: response
-  def put(url), do: con(:put, url)
+  def post(url, content \\ <<>>), do: con(:post, url, content)
+
+  @doc """
+    Perform a confirmable, PUT request to a URL
+    Returns a `CoAP.Message` response, or an error tuple
+    Optionally takes a binary content payload
+
+    CoAP.Client.put("coap://localhost:5683/api/", "somepayload")
+  """
   @spec put(request_url, binary) :: response
-  def put(url, content), do: con(:put, url, content)
+  def put(url, content \\ <<>>), do: con(:put, url, content)
+
+  @doc """
+    Perform a confirmable, DELETE request to a URL
+    Returns a `CoAP.Message` response, or an error tuple
+
+    CoAP.Client.delete("coap://localhost:5683/api/")
+  """
   @spec delete(request_url) :: response
   def delete(url), do: con(:delete, url)
 
-  @spec con(request_method, request_url) :: response
-  def con(method, url), do: request(:con, method, url)
+  @doc """
+    Perform a confirmable request of any method (get/post/put/delete)
+    Returns a `CoAP.Message` response, or an error tuple
+
+    CoAP.Client.con(:get, "coap://localhost:5683/api/", "somepayload")
+  """
   @spec con(request_method, request_url, binary) :: response
-  def con(method, url, content), do: request(:con, method, url, content)
+  def con(method, url, content \\ <<>>), do: request(:con, method, url, content)
   # defp non(method, url), do: request(:non, method, url)
   # defp ack(method, url), do: request(:ack, method, url)
   # defp reset(method, url), do: request(:reset, method, url)
 
+  @doc """
+    Perform a request
+
+    Accepts 3-5 arguments:
+    * type: 1 of :con, :non, :ack, :reset
+    * method: 1 of :get, :post, :put :delete
+    * url: binary, parseable by `:uri_string.parse`
+    * optional content: a binary payload
+    * optional options: a map of options - retries, retry_timeout, and timeout
+
+    Returns the binary of the response
+  """
   @spec request(request_type, request_method, request_url, binary, map) ::
           response
   def request(type, method, url, content \\ <<>>, options \\ %{}) do
