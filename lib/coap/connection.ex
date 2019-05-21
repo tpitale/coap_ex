@@ -391,6 +391,7 @@ defmodule CoAP.Connection do
     # Cancel the app_ack waiting timeout
     cancel_timer(state.timer)
 
+    # TODO: what happens if the app response is a status code, no code_class/detail tuple?
     response =
       Message.response_for(
         {message.code_class, message.code_detail},

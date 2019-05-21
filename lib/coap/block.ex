@@ -11,9 +11,16 @@ defmodule CoAP.Block do
   # TODO: if more: false, a size_exponent of 0 should be ignored?
   # otherwise size_exponent of 0 results in size: 16
 
+  @doc """
+  Build a Block struct
+  If given a Block struct, return it
+  """
   @spec build(t()) :: t()
   def build(%__MODULE__{} = block), do: block
 
+  @doc """
+  Build a block struct from an message option tuple
+  """
   @spec build(tuple_t()) :: t()
   def build({number, more, size}) do
     %__MODULE__{number: number, more: more, size: size}
@@ -25,24 +32,42 @@ defmodule CoAP.Block do
   @spec to_tuple(nil) :: nil
   def to_tuple(nil), do: nil
 
+  @doc """
+  Return a block tuple for a block struct
+  """
   @spec to_tuple(t()) :: tuple_t()
   def to_tuple(%__MODULE__{} = block), do: {block.number, block.more, block.size}
 
+  @doc """
+  Return a block tuple when given a block tuple
+  """
   @spec to_tuple(tuple_t()) :: tuple_t()
   def to_tuple(block) when is_tuple(block), do: block
 
+  @doc """
+  Decode binary block option to tuple, small size(4) block number
+  """
   @spec decode(binary_t_small()) :: t()
   def decode(<<number::size(4), more::size(1), size_exponent::size(3)>>),
     do: decode(number, more, size_exponent)
 
+  @doc """
+  Decode binary block option to tuple, medium size(12) block number
+  """
   @spec decode(binary_t_medium()) :: t()
   def decode(<<number::size(12), more::size(1), size_exponent::size(3)>>),
     do: decode(number, more, size_exponent)
 
+  @doc """
+  Decode binary block option to tuple, large size(28) block number
+  """
   @spec decode(binary_t_large()) :: t()
   def decode(<<number::size(28), more::size(1), size_exponent::size(3)>>),
     do: decode(number, more, size_exponent)
 
+  @doc """
+  Decode tuple from binary block to Block struct
+  """
   @spec decode(integer, 0 | 1, integer) :: t()
   def decode(number, more, size_exponent) do
     %__MODULE__{
