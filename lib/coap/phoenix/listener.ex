@@ -1,4 +1,8 @@
 defmodule CoAP.Phoenix.Listener do
+  @moduledoc """
+    CoAP.Phoenix.Listner looks up Phoenix config and
+    starts a SocketServer on the configured port to wrap the endpoint (Phoenix router)
+  """
   use GenServer
 
   @adapter CoAP.Adapters.Phoenix
@@ -39,17 +43,4 @@ defmodule CoAP.Phoenix.Listener do
 
     {:ok, %{endpoint: endpoint, config: config, server: server}}
   end
-
-  # # TODO: start gen_udp and implement coap protocol
-  # def handle_info({:udp, socket, address, port, data}, %{endpoint: endpoint, config: config}) do
-  #   # TODO: instrumentation
-  #   info("Received request from #{inspect(address)}:#{inspect(port)}. #{inspect(data)}")
-  #
-  #   # TODO: split each of these into its own process, supervise?
-  #
-  #   data
-  #   |> CoAP.Message.decode
-  #   |> CoAP.Phoenix.Request.build(socket, address, port, config)
-  #   |> CoAP.Phoenix.Handler.init({endpoint, config})
-  # end
 end
