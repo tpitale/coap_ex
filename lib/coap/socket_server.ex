@@ -104,17 +104,27 @@ defmodule CoAP.SocketServer do
     {:noreply, state}
   end
 
-  # TODO: Do we need to do this when using connection supervisor?
   @doc """
     Handles message for completed connection
     Removes complete connection from the registry and monitoring
   """
-  def handle_info({:DOWN, ref, :process, _from, reason}, %{monitors: monitors} = state) do
+  def handle_info({:DOWN, ref, :process, _from, reason}, state) do
+    client?(state)
+    |> case do
+      true -> :client
+      false -> :server
+    end
+    |> connection_complete(ref, reason, state)
+  end
+
+  defp connection_complete(:server, ref, reason, %{monitors: monitors} = state) do
     connection_id = Map.get(monitors, ref)
 
     debug(
       "CoAP socket received DOWN:#{reason} in CoAP.SocketServer from:#{inspect(connection_id)}"
     )
+
+    # TODO: handle noproc
 
     {:noreply,
      %{
@@ -122,6 +132,16 @@ defmodule CoAP.SocketServer do
        | connections: Map.delete(state.connections, connection_id),
          monitors: Map.delete(monitors, ref)
      }}
+  end
+
+  defp connection_complete(:client, ref, reason, %{monitors: monitors} = state) do
+    connection_id = Map.get(monitors, ref)
+
+    debug(
+      "CoAP socket received DOWN:#{reason} in CoAP.SocketServer from:#{inspect(connection_id)}"
+    )
+
+    {:stop, :normal, state}
   end
 
   defp connection_for(connection_id, state) do
@@ -172,4 +192,7 @@ defmodule CoAP.SocketServer do
       {:error, _reason} -> nil
     end
   end
+
+  defp client?(%{port: 0}), do: true
+  defp client?(_), do: false
 end
