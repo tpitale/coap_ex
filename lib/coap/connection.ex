@@ -342,9 +342,7 @@ defmodule CoAP.Connection do
       | payload: payload,
         multipart: nil
     }
-    |> receive_message(state)
-
-    %{state | in_payload: nil}
+    |> receive_message(%{state | in_payload: nil})
   end
 
   # con, method, request (server)
