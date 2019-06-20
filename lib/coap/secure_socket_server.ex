@@ -27,6 +27,8 @@ defmodule CoAP.SecureSocketServer do
 
   alias CoAP.Message
 
+  @handshake_timeout 5000
+
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
   end
@@ -40,16 +42,17 @@ defmodule CoAP.SecureSocketServer do
     Open a udp socket on the given port and store in state
     Initialize connections and monitors empty maps in state
   """
-  def init([port, endpoint, ssl_config]) do
+  def init([endpoint, port, ssl_config]) do
     {:ok, listen_socket} =
-      :ssl.listen(port, [:binary, {:active, true}, {:reuseaddr, true}, {:protocol, :dtls}])
+      :ssl.listen(port, [:binary, {:active, false}, {:reuseaddr, true}, {:protocol, :dtls}])
 
-    {:ok, socket} = :ssl.transport_accept(listen_socket)
+    acceptor = CoAP.Acceptor.start_link([self(), listen_socket])
 
     {:ok,
      %{
        port: port,
-       socket: socket,
+       listen_socket: listen_socket,
+       acceptor: acceptor,
        endpoint: endpoint,
        ssl_config: ssl_config,
        connections: %{},
@@ -84,6 +87,15 @@ defmodule CoAP.SecureSocketServer do
   #      monitors: %{ref => connection_id}
   #    }}
   # end
+
+  def handle_info({:process, handshake_socket}, state) do
+    {:ok, socket} = :ssl.handshake(handshake_socket, @handshake_timeout)
+    :ok = :ssl.controlling_process(socket, self())
+    :ok = :ssl.setopts(socket, [{:active, true}])
+
+    # TODO: do we need to store the socket?
+    {:noreply, state}
+  end
 
   @doc """
     Receive udp packets, forward to the appropriate connection
@@ -140,6 +152,7 @@ defmodule CoAP.SecureSocketServer do
   end
 
   defp connection_for(connection_id, state) do
+    # TODO: switch to socket?
     connection = Map.get(state.connections, connection_id)
 
     case connection do
