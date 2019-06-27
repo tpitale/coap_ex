@@ -93,13 +93,19 @@ defmodule CoAP.Connection do
               message: <<>>,
               timer: nil,
               retries: 0,
+              max_retries: 0,
               retry_timeout: nil,
               in_payload: CoAP.Payload.empty(),
               out_payload: CoAP.Payload.empty(),
               next_message_id: nil
 
     def add_options(state, options) do
-      %{state | retries: options.retries, retry_timeout: options.retry_timeout}
+      %{
+        state
+        | retries: options.retries,
+          max_retries: options.retries,
+          retry_timeout: options.retry_timeout
+      }
     end
   end
 
@@ -198,6 +204,7 @@ defmodule CoAP.Connection do
 
     message
     |> receive_message(state)
+    |> reset_retries()
     |> state_for_return()
   end
 
@@ -260,7 +267,7 @@ defmodule CoAP.Connection do
          %{phase: :awaiting_peer_ack} = state
        )
        when number > 0 do
-    restart_timer(state.timer, ack_timeout())
+    timer = restart_timer(state.timer, ack_timeout())
 
     # Payload should calculate byte offset from next number
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
@@ -276,7 +283,7 @@ defmodule CoAP.Connection do
 
     reply(response, state)
 
-    %{state | out_payload: next_payload, message: response}
+    %{state | timer: timer, out_payload: next_payload, message: response}
   end
 
   # BLOCK-WISE TRANSFER:
@@ -295,7 +302,7 @@ defmodule CoAP.Connection do
          %{multipart: %{more: true, number: number, size: size}} = message,
          state
        ) do
-    restart_timer(state.timer, ack_timeout())
+    timer = restart_timer(state.timer, ack_timeout())
 
     # TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
@@ -320,6 +327,7 @@ defmodule CoAP.Connection do
     %{
       state
       | in_payload: Payload.add(state.in_payload, number, message.payload),
+        timer: timer,
         message: response
     }
   end
@@ -515,6 +523,8 @@ defmodule CoAP.Connection do
   end
 
   # HELPERS ====================================================================
+  defp reset_retries(%{max_retries: retries} = state), do: %{state | retries: retries}
+
   defp state_for_return(%{phase: :sent_non} = state), do: {:stop, :normal, state}
   defp state_for_return(%{phase: :got_non} = state), do: {:stop, :normal, state}
   defp state_for_return(%{phase: :app_ack_sent} = state), do: {:stop, :normal, state}
@@ -532,7 +542,9 @@ defmodule CoAP.Connection do
 
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
-  # defp cancel_timer(nil), do: nil
+  # defp cancel_timer(nil) do
+  #   IO.puts("No timer")
+  # end
   defp cancel_timer(timer), do: Process.cancel_timer(timer)
 
   defp restart_timer(nil, timeout), do: start_timer(timeout)
