@@ -5,13 +5,6 @@ defmodule CoAP.Payload do
 
   def empty(), do: %__MODULE__{}
 
-  def add(nil, segment) do
-    %__MODULE__{
-      multipart: false,
-      segments: [{0, segment}]
-    }
-  end
-
   def add(%__MODULE__{segments: segments}, number, segment) do
     %__MODULE__{
       multipart: true,
@@ -23,7 +16,9 @@ defmodule CoAP.Payload do
 
   def to_binary(%__MODULE__{segments: segments, data: <<>>}) do
     segments
+    |> Enum.reverse()
     |> List.keysort(0)
+    |> Enum.uniq_by(&elem(&1, 0))
     |> Enum.map(&elem(&1, 1))
     |> Enum.join(<<>>)
   end
