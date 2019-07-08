@@ -16,9 +16,14 @@ defmodule CoAP.Client do
     @max_retries 4
     @wait_timeout 10_000
 
-    @type t :: %__MODULE__{retries: integer, retry_timeout: integer, timeout: integer}
+    @type t :: %__MODULE__{
+            retries: integer,
+            retry_timeout: integer,
+            timeout: integer,
+            ack_timeout: integer
+          }
 
-    defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout
+    defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout, ack_timeout: nil
   end
 
   # TODO: options: headers/params?

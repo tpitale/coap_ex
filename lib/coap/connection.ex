@@ -111,7 +111,8 @@ defmodule CoAP.Connection do
         state
         | retries: options.retries,
           max_retries: options.retries,
-          retry_timeout: options.retry_timeout
+          retry_timeout: options.retry_timeout,
+          ack_timeout: options.ack_timeout || @ack_timeout
       }
     end
 
