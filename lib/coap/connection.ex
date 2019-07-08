@@ -79,6 +79,12 @@ defmodule CoAP.Connection do
   use GenServer
 
   defmodule State do
+    # 2s is the spec default
+    @ack_timeout 2000
+    # 1.5 is the spec default
+    # gen_coap uses ack_timeout*0.5
+    @ack_random_factor 1500
+
     # udp socket
     defstruct server: nil,
               # App
@@ -97,7 +103,8 @@ defmodule CoAP.Connection do
               retry_timeout: nil,
               in_payload: CoAP.Payload.empty(),
               out_payload: CoAP.Payload.empty(),
-              next_message_id: nil
+              next_message_id: nil,
+              ack_timeout: @ack_timeout
 
     def add_options(state, options) do
       %{
@@ -106,6 +113,10 @@ defmodule CoAP.Connection do
           max_retries: options.retries,
           retry_timeout: options.retry_timeout
       }
+    end
+
+    def ack_timeout(state) do
+      state.ack_timeout + :rand.uniform(@ack_random_factor)
     end
   end
 
@@ -117,12 +128,6 @@ defmodule CoAP.Connection do
   alias CoAP.Block
 
   @default_payload_size 512
-
-  # 2s is the spec default
-  @ack_timeout 2000
-  # 1.5 is the spec default
-  # gen_coap uses ack_timeout*0.5
-  @ack_random_factor 1500
 
   # standard allows 2000
   @processing_delay 1000
@@ -267,7 +272,7 @@ defmodule CoAP.Connection do
          %{phase: :awaiting_peer_ack} = state
        )
        when number > 0 do
-    timer = restart_timer(state.timer, ack_timeout())
+    timer = restart_timer(state.timer, ack_timeout(state))
 
     # Payload should calculate byte offset from next number
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
@@ -302,7 +307,7 @@ defmodule CoAP.Connection do
          %{multipart: %{more: true, number: number, size: size}} = message,
          state
        ) do
-    timer = restart_timer(state.timer, ack_timeout())
+    timer = restart_timer(state.timer, ack_timeout(state))
 
     # TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
@@ -436,7 +441,7 @@ defmodule CoAP.Connection do
     }
     |> reply(state)
 
-    timeout = ack_timeout()
+    timeout = ack_timeout(state)
     timer = restart_timer(state.timer, timeout)
 
     %{
@@ -538,7 +543,7 @@ defmodule CoAP.Connection do
   defp peer_for(%{ip: ip, port: port}), do: {ip, port}
 
   # TIMERS =====================================================================
-  defp ack_timeout(), do: @ack_timeout + :rand.uniform(@ack_random_factor)
+  defp ack_timeout(state), do: State.ack_timeout(state)
 
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
