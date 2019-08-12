@@ -166,6 +166,7 @@ defmodule CoAP.SocketServer do
     case connection do
       nil ->
         {:ok, conn} = start_connection(self(), state.endpoint, connection_id)
+        ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)}")
 
         {
@@ -173,7 +174,7 @@ defmodule CoAP.SocketServer do
           %{
             state
             | connections: Map.put(state.connections, connection_id, conn),
-              monitors: Map.put(state.monitors, conn, connection_id)
+              monitors: Map.put(state.monitors, ref, connection_id)
           }
         }
 
