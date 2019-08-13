@@ -85,6 +85,12 @@ defmodule CoAP.Connection do
     # gen_coap uses ack_timeout*0.5
     @ack_random_factor 1500
 
+    # standard allows 2000
+    @processing_delay 1000
+
+    # @connection_timeout 247_000
+    # @non_timeout 145_000
+
     # udp socket
     defstruct server: nil,
               # App
@@ -104,8 +110,10 @@ defmodule CoAP.Connection do
               in_payload: CoAP.Payload.empty(),
               out_payload: CoAP.Payload.empty(),
               next_message_id: nil,
-              ack_timeout: @ack_timeout
+              ack_timeout: @ack_timeout,
+              processing_delay: @processing_delay
 
+    # Used by client
     def add_options(state, options) do
       %{
         state
@@ -113,6 +121,15 @@ defmodule CoAP.Connection do
           max_retries: options.retries,
           retry_timeout: options.retry_timeout,
           ack_timeout: options.ack_timeout || @ack_timeout
+      }
+    end
+
+    # Used by server
+    def add_config(state, options) do
+      %{
+        state
+        | ack_timeout: options[:ack_timeout] || @ack_timeout,
+          processing_delay: options[:processing_delay] || @processing_delay
       }
     end
 
@@ -130,18 +147,13 @@ defmodule CoAP.Connection do
 
   @default_payload_size 512
 
-  # standard allows 2000
-  @processing_delay 1000
-  # @connection_timeout 247_000
-  # @non_timeout 145_000
-
   # 16 bit number
   @max_message_id 65535
 
-  def child_spec([server, endpoint, peer]) do
+  def child_spec([server, endpoint, peer, config]) do
     %{
       id: peer,
-      start: {__MODULE__, :start_link, [[server, endpoint, peer]]},
+      start: {__MODULE__, :start_link, [[server, endpoint, peer, config]]},
       restart: :transient,
       modules: [__MODULE__]
     }
@@ -159,7 +171,7 @@ defmodule CoAP.Connection do
 
     Return {:ok, state}
   """
-  def init([server, {adapter, endpoint}, {ip, port, token} = _peer]) do
+  def init([server, {adapter, endpoint}, {ip, port, token} = _peer, config]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
     {:ok,
@@ -169,7 +181,8 @@ defmodule CoAP.Connection do
        ip: ip,
        port: port,
        token: token
-     }}
+     }
+     |> State.add_config(config)}
   end
 
   @doc """
@@ -245,6 +258,8 @@ defmodule CoAP.Connection do
 
   # TODO: resend reset?
   # TODO: what is the message if the client has to re-request after a processing timeout from the app?
+
+  # TODO: resend stored message (ack)
   defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
   # Do nothing if we receive a message from peer during these states; we should be shutting down
@@ -389,13 +404,17 @@ defmodule CoAP.Connection do
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
     cancel_timer(state.timer)
 
+    # TODO: what happens if this is an empty ACK and we get another response later?
+    # Could we go back to being idle?
     handle(message, state.handler, peer_for(state))
 
     %{state | phase: next_phase(:awaiting_peer_ack, nil), timer: nil}
   end
 
   # DELIVER ====================================================================
-  # reply from app to peer, this is part of the server
+  # TODO: deliver message for got_non as a NON message, phase becomes :sent_non
+  # TODO: deliver message for peer_ack_sent as a CON message, phase becomes :awaiting_peer_ack
+
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
     # TODO: does the message include the original request control?
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
@@ -505,7 +524,7 @@ defmodule CoAP.Connection do
   defp await_app_ack(message, state) do
     # ready for APP timeout
     cached_response = Message.response_for(message)
-    timer = restart_timer(state.timer, @processing_delay)
+    timer = restart_timer(state.timer, processing_delay(state))
 
     %{state | phase: :awaiting_app_ack, message: cached_response, timer: timer}
   end
@@ -545,6 +564,7 @@ defmodule CoAP.Connection do
 
   # TIMERS =====================================================================
   defp ack_timeout(state), do: State.ack_timeout(state)
+  defp processing_delay(state), do: state.processing_delay
 
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 

@@ -46,6 +46,17 @@ config :my_app, MyApp.Coap.Endpoint,
   coap: [port: 5683]
 ```
 
+**Note**: if you have control of both client and server, as in an IoT deployment,
+you may wish to adjust configuration for `ack_timeout` and `processing_delay`.
+This is allowed, but should be used with extreme caution as it exists outside
+the boundaries of the CoAP specification.
+
+```
+config :my_app, MyApp.Coap.Endpoint,
+  http: false, https: false, server: false,
+  coap: [port: 5683, ack_timeout: 5000, processing_delay: 4500]
+```
+
 In `lib/my_app.ex` add supervisor and listener for the endpoint:
 
 ```
