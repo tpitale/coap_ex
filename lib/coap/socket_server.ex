@@ -48,20 +48,6 @@ defmodule CoAP.SocketServer do
   """
   def init([endpoint, port]), do: init([endpoint, port, []])
 
-  def init([endpoint, port, config]) when is_list(config) do
-    {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
-
-    {:ok,
-     %{
-       port: port,
-       socket: socket,
-       endpoint: endpoint,
-       connections: %{},
-       monitors: %{},
-       config: config
-     }}
-  end
-
   # Used by Connection to start a udp port
   # endpoint => client
   @doc """
@@ -88,6 +74,20 @@ defmodule CoAP.SocketServer do
        endpoint: endpoint,
        connections: %{connection_id => connection},
        monitors: %{ref => connection_id}
+     }}
+  end
+
+  def init([endpoint, port, config]) do
+    {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
+
+    {:ok,
+     %{
+       port: port,
+       socket: socket,
+       endpoint: endpoint,
+       connections: %{},
+       monitors: %{},
+       config: config
      }}
   end
 
