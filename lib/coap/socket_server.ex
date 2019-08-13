@@ -46,11 +46,7 @@ defmodule CoAP.SocketServer do
     Open a udp socket on the given port and store in state
     Initialize connections and monitors empty maps in state
   """
-  def init([endpoint, port]) do
-    {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
-
-    {:ok, %{port: port, socket: socket, endpoint: endpoint, connections: %{}, monitors: %{}}}
-  end
+  def init([endpoint, port]), do: init([endpoint, port, []])
 
   # Used by Connection to start a udp port
   # endpoint => client
@@ -78,6 +74,20 @@ defmodule CoAP.SocketServer do
        endpoint: endpoint,
        connections: %{connection_id => connection},
        monitors: %{ref => connection_id}
+     }}
+  end
+
+  def init([endpoint, port, config]) do
+    {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
+
+    {:ok,
+     %{
+       port: port,
+       socket: socket,
+       endpoint: endpoint,
+       connections: %{},
+       monitors: %{},
+       config: config
      }}
   end
 
@@ -165,7 +175,7 @@ defmodule CoAP.SocketServer do
 
     case connection do
       nil ->
-        {:ok, conn} = start_connection(self(), state.endpoint, connection_id)
+        {:ok, conn} = start_connection(self(), state.endpoint, connection_id, state.config)
         ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)}")
 
@@ -184,12 +194,12 @@ defmodule CoAP.SocketServer do
   end
 
   # TODO: move to CoAP
-  defp start_connection(server, endpoint, peer) do
+  defp start_connection(server, endpoint, peer, config) do
     DynamicSupervisor.start_child(
       CoAP.ConnectionSupervisor,
       {
         CoAP.Connection,
-        [server, endpoint, peer]
+        [server, endpoint, peer, config]
       }
     )
   end
