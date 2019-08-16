@@ -177,7 +177,7 @@ defmodule CoAP.SocketServer do
       nil ->
         {:ok, conn} = start_connection(self(), state.endpoint, connection_id, state.config)
         ref = Process.monitor(conn)
-        debug("Started conn: #{inspect(conn)}")
+        debug("Started conn: #{inspect(conn)} for #{inspect(connection_id)}")
 
         {
           conn,
