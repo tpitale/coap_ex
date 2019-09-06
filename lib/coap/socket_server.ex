@@ -97,6 +97,12 @@ defmodule CoAP.SocketServer do
   def handle_info({:udp, _socket, peer_ip, peer_port, data}, state) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
+    :telemetry.execute(
+      [:coap_ex, :connection, :data_received],
+      %{size: byte_size(data)},
+      %{host: peer_ip, port: peer_port}
+    )
+
     message = Message.decode(data)
 
     {connection, new_state} =
@@ -119,6 +125,12 @@ defmodule CoAP.SocketServer do
 
     debug("CoAP socket sending raw data #{to_hex(data)} to #{inspect({ip, port})}")
 
+    :telemetry.execute(
+      [:coap_ex, :connection, :data_sent],
+      %{size: byte_size(data)},
+      %{host: ip, port: port}
+    )
+
     :gen_udp.send(socket, ip, port, data)
 
     {:noreply, state}
@@ -129,12 +141,21 @@ defmodule CoAP.SocketServer do
     Removes complete connection from the registry and monitoring
   """
   def handle_info({:DOWN, ref, :process, _from, reason}, state) do
-    client?(state)
-    |> case do
-      true -> :client
-      false -> :server
-    end
-    |> connection_complete(ref, reason, state)
+    type =
+      case client?(state) do
+        true -> :client
+        false -> :server
+      end
+
+    {host, port, _} = Map.get(state.monitors, ref)
+
+    :telemetry.execute(
+      [:coap_ex, :connection, :connection_ended],
+      %{},
+      %{type: type, host: host, port: port}
+    )
+
+    connection_complete(type, ref, reason, state)
   end
 
   defp connection_complete(:server, ref, reason, %{monitors: monitors} = state) do
@@ -178,6 +199,14 @@ defmodule CoAP.SocketServer do
         {:ok, conn} = start_connection(self(), state.endpoint, connection_id, state.config)
         ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)} for #{inspect(connection_id)}")
+
+        {host, port, _} = connection_id
+
+        :telemetry.execute(
+          [:coap_ex, :connection, :connection_started],
+          %{},
+          %{host: host, port: port}
+        )
 
         {
           conn,

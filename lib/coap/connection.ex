@@ -304,6 +304,12 @@ defmodule CoAP.Connection do
 
     reply(response, state)
 
+    :telemetry.execute(
+      [:coap_ex, :connection, :block_sent],
+      %{size: byte_size(next_payload.data)},
+      %{message_id: message_id, block_number: number}
+    )
+
     %{state | timer: timer, out_payload: next_payload, message: response}
   end
 
@@ -344,6 +350,12 @@ defmodule CoAP.Connection do
 
     response = %{response | multipart: multipart}
     reply(response, state)
+
+    :telemetry.execute(
+      [:coap_ex, :connection, :block_received],
+      %{size: byte_size(message.payload)},
+      %{message_id: message.message_id, block_number: number}
+    )
 
     %{
       state
@@ -504,19 +516,32 @@ defmodule CoAP.Connection do
     timeout = timeout * 2
     timer = start_timer(timeout)
 
-    # TODO: instrument log/stat for each retry
+    remaining = retries - 1
+
+    :telemetry.execute(
+      [:coap_ex, :connection, :re_tried],
+      %{size: byte_size(message.payload)},
+      %{message_id: message.message_id, remaining_retries: remaining}
+    )
 
     %{
       state
       | phase: :awaiting_peer_ack,
         timer: timer,
         retry_timeout: timeout,
-        retries: retries - 1
+        retries: remaining
     }
   end
 
   defp timeout(state) do
     info("Received timeout: #{inspect(state)}")
+
+    :telemetry.execute(
+      [:coap_ex, :connection, :timed_out],
+      %{},
+      %{message_id: state.message.message_id}
+    )
+
     state
   end
 
