@@ -200,10 +200,12 @@ defmodule CoAP.SocketServer do
         ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)} for #{inspect(connection_id)}")
 
+        {host, port, _} = connection_id
+
         :telemetry.execute(
           [:coap_ex, :connection, :connection_started],
           %{},
-          %{connection_id: connection_id}
+          %{host: host, port: port}
         )
 
         {
