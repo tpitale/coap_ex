@@ -305,9 +305,9 @@ defmodule CoAP.Connection do
     reply(response, state)
 
     :telemetry.execute(
-      [:coap_ex, :connection, :block_transferred],
+      [:coap_ex, :connection, :block_sent],
       %{size: byte_size(next_payload.data)},
-      %{message_id: message_id, block_number: number, direction: :send}
+      %{message_id: message_id, block_number: number}
     )
 
     %{state | timer: timer, out_payload: next_payload, message: response}
@@ -352,9 +352,9 @@ defmodule CoAP.Connection do
     reply(response, state)
 
     :telemetry.execute(
-      [:coap_ex, :connection, :block_transferred],
+      [:coap_ex, :connection, :block_received],
       %{size: byte_size(message.payload)},
-      %{message_id: message.message_id, block_number: number, direction: :receive}
+      %{message_id: message.message_id, block_number: number}
     )
 
     %{
