@@ -111,7 +111,8 @@ defmodule CoAP.Connection do
               out_payload: CoAP.Payload.empty(),
               next_message_id: nil,
               ack_timeout: @ack_timeout,
-              processing_delay: @processing_delay
+              processing_delay: @processing_delay,
+              tag: nil
 
     # Used by client
     def add_options(state, options) do
@@ -221,6 +222,12 @@ defmodule CoAP.Connection do
     # TODO: start timer for conn
     # TODO: check if the message_id matches what we may have already sent?
 
+    :telemetry.execute(
+      [:coap_ex, :connection, :data_received],
+      %{size: message.raw_size},
+      %{host: state.ip, port: state.port, tag: state.tag}
+    )
+
     message
     |> receive_message(state)
     |> reset_retries()
@@ -239,6 +246,8 @@ defmodule CoAP.Connection do
   end
 
   def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
+
+  def handle_info({:tag, tag}, state), do: {:noreply, %{state | tag: tag}}
 
   # TODO: connection timeout, set to original state?
 
@@ -285,7 +294,7 @@ defmodule CoAP.Connection do
   # 8. Store the out_payload and cache the response in state
   defp receive_message(
          %{multipart: %{requested_number: number}, message_id: message_id} = _message,
-         %{phase: :awaiting_peer_ack} = state
+         %{phase: :awaiting_peer_ack, tag: tag} = state
        )
        when number > 0 do
     timer = restart_timer(state.timer, ack_timeout(state))
@@ -307,7 +316,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :block_sent],
       %{size: byte_size(next_payload.data)},
-      %{message_id: message_id, block_number: number}
+      %{message_id: message_id, block_number: number, tag: tag}
     )
 
     %{state | timer: timer, out_payload: next_payload, message: response}
@@ -354,7 +363,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :block_received],
       %{size: byte_size(message.payload)},
-      %{message_id: message.message_id, block_number: number}
+      %{message_id: message.message_id, block_number: number, tag: state.tag}
     )
 
     %{
@@ -506,7 +515,8 @@ defmodule CoAP.Connection do
            phase: :awaiting_peer_ack,
            message: message,
            retry_timeout: timeout,
-           retries: retries
+           retries: retries,
+           tag: tag
          } = state
        ) do
     # retry delivering the cached message
@@ -521,7 +531,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :re_tried],
       %{size: byte_size(message.payload)},
-      %{message_id: message.message_id, remaining_retries: remaining}
+      %{message_id: message.message_id, remaining_retries: remaining, tag: tag}
     )
 
     %{
@@ -539,7 +549,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :timed_out],
       %{},
-      %{message_id: state.message.message_id}
+      %{message_id: state.message.message_id, tag: state.tag}
     )
 
     state
@@ -568,8 +578,8 @@ defmodule CoAP.Connection do
   end
 
   # RESPOND ====================================================================
-  defp reply(message, %{server: server} = state) do
-    send(server, {:deliver, message, peer_for(state)})
+  defp reply(message, %{server: server, tag: tag} = state) do
+    send(server, {:deliver, message, peer_for(state), tag})
   end
 
   # HELPERS ====================================================================

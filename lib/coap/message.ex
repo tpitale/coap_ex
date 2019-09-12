@@ -18,7 +18,8 @@ defmodule CoAP.Message do
             token: <<0x01>>,
             options: %{},
             multipart: nil,
-            payload: <<>>
+            payload: <<>>,
+            raw_size: 0
 
   @type t :: %__MODULE__{
           version: integer,
@@ -31,7 +32,9 @@ defmodule CoAP.Message do
           message_id: integer,
           token: binary,
           options: map,
-          multipart: CoAP.Multipart.t()
+          multipart: CoAP.Multipart.t(),
+          payload: binary,
+          raw_size: integer
         }
 
   @payload_marker 0xFF
@@ -194,7 +197,8 @@ defmodule CoAP.Message do
         },
         payload: "payload",
         multipart: %CoAP.Multipart{control: nil, description: nil, more: false, multipart: false, number: 0},
-        method: :put
+        method: :put,
+        raw_size: 35
       }
 
       iex> message = <<68, 1, 0, 1, 163, 249, 107, 129, 57, 108, 111, 99, 97, 108, 104, 111, 115,
@@ -217,7 +221,8 @@ defmodule CoAP.Message do
         },
         payload: "data",
         multipart: %CoAP.Multipart{control: nil, description: nil, more: false, multipart: false, number: 0},
-        method: :get
+        method: :get,
+        raw_size: 40
       }
 
       iex> data = <<0x40, 0x01, 0x21, 0x27, 0xB3, 0x61, 0x70, 0x69, 0xC1, 0x15, 0xFF, 0x32, 0x24, 0x0A, 0x0C, 0x0A, 0x0A, 0x33, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x31, 0x36, 0x34, 0x12, 0x14, 0x30, 0x31, 0x30, 0x39, 0x32, 0x34, 0x35, 0x30, 0x46, 0x30, 0x41, 0x46, 0x6D, 0x63, 0x75, 0x2D, 0x65, 0x76, 0x74, 0x32>>
@@ -232,7 +237,7 @@ defmodule CoAP.Message do
       }
   """
   @spec decode(binary) :: t()
-  def decode(unquote(@message_header_format)) do
+  def decode(unquote(@message_header_format) = raw_data) do
     <<
       token::binary-size(token_length),
       options_payload::binary
@@ -254,7 +259,8 @@ defmodule CoAP.Message do
       token: token,
       options: options,
       multipart: multipart(request, options),
-      payload: payload
+      payload: payload,
+      raw_size: byte_size(raw_data)
     }
   end
 

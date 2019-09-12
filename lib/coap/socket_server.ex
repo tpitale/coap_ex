@@ -97,12 +97,6 @@ defmodule CoAP.SocketServer do
   def handle_info({:udp, _socket, peer_ip, peer_port, data}, state) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
-    :telemetry.execute(
-      [:coap_ex, :connection, :data_received],
-      %{size: byte_size(data)},
-      %{host: peer_ip, port: peer_port}
-    )
-
     message = Message.decode(data)
 
     {connection, new_state} =
@@ -118,7 +112,7 @@ defmodule CoAP.SocketServer do
   @doc """
     Deliver messages to be sent to a peer
   """
-  def handle_info({:deliver, message, {host, port} = _peer}, %{socket: socket} = state) do
+  def handle_info({:deliver, message, {host, port} = _peer, tag}, %{socket: socket} = state) do
     data = Message.encode(message)
 
     ip = normalize_host(host)
@@ -128,7 +122,7 @@ defmodule CoAP.SocketServer do
     :telemetry.execute(
       [:coap_ex, :connection, :data_sent],
       %{size: byte_size(data)},
-      %{host: ip, port: port}
+      %{host: ip, port: port, tag: tag}
     )
 
     :gen_udp.send(socket, ip, port, data)
