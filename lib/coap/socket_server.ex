@@ -122,7 +122,7 @@ defmodule CoAP.SocketServer do
     :telemetry.execute(
       [:coap_ex, :connection, :data_sent],
       %{size: byte_size(data)},
-      %{host: ip, port: port, tag: tag}
+      %{host: ip, port: port, message_id: message.message_id, token: message.token, tag: tag}
     )
 
     :gen_udp.send(socket, ip, port, data)
@@ -194,12 +194,12 @@ defmodule CoAP.SocketServer do
         ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)} for #{inspect(connection_id)}")
 
-        {host, port, _} = connection_id
+        {host, port, token} = connection_id
 
         :telemetry.execute(
           [:coap_ex, :connection, :connection_started],
           %{},
-          %{host: host, port: port}
+          %{host: host, port: port, token: token}
         )
 
         {

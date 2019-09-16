@@ -226,7 +226,13 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :data_received],
       %{size: message.raw_size},
-      %{host: state.ip, port: state.port, tag: state.tag}
+      %{
+        host: state.ip,
+        port: state.port,
+        message_id: message.message_id,
+        token: message.token,
+        tag: state.tag
+      }
     )
 
     message
@@ -294,7 +300,8 @@ defmodule CoAP.Connection do
   # 7. Send the message back to the client
   # 8. Store the out_payload and cache the response in state
   defp receive_message(
-         %{multipart: %{requested_number: number}, message_id: message_id} = _message,
+         %{multipart: %{requested_number: number}, message_id: message_id, token: token} =
+           _message,
          %{phase: :awaiting_peer_ack, tag: tag} = state
        )
        when number > 0 do
@@ -317,7 +324,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :block_sent],
       %{size: byte_size(next_payload.data)},
-      %{message_id: message_id, block_number: number, tag: tag}
+      %{message_id: message_id, token: token, block_number: number, tag: tag}
     )
 
     %{state | timer: timer, out_payload: next_payload, message: response}
@@ -364,7 +371,12 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :block_received],
       %{size: byte_size(message.payload)},
-      %{message_id: message.message_id, block_number: number, tag: state.tag}
+      %{
+        message_id: message.message_id,
+        token: message.token,
+        block_number: number,
+        tag: state.tag
+      }
     )
 
     %{
@@ -532,7 +544,12 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :re_tried],
       %{size: byte_size(message.payload)},
-      %{message_id: message.message_id, remaining_retries: remaining, tag: tag}
+      %{
+        message_id: message.message_id,
+        token: message.token,
+        remaining_retries: remaining,
+        tag: tag
+      }
     )
 
     %{
@@ -550,7 +567,7 @@ defmodule CoAP.Connection do
     :telemetry.execute(
       [:coap_ex, :connection, :timed_out],
       %{},
-      %{message_id: state.message.message_id, tag: state.tag}
+      %{message_id: state.message.message_id, token: state.message.token, tag: state.tag}
     )
 
     state
