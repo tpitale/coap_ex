@@ -20,10 +20,15 @@ defmodule CoAP.Client do
             retries: integer,
             retry_timeout: integer,
             timeout: integer,
-            ack_timeout: integer
+            ack_timeout: integer,
+            tag: any
           }
 
-    defstruct retries: @max_retries, retry_timeout: nil, timeout: @wait_timeout, ack_timeout: nil
+    defstruct retries: @max_retries,
+              retry_timeout: nil,
+              timeout: @wait_timeout,
+              ack_timeout: nil,
+              tag: nil
   end
 
   # TODO: options: headers/params?

@@ -66,6 +66,8 @@ defmodule CoAP.Phoenix.Conn do
     |> Enum.filter(fn part -> part != "" end)
   end
 
+  def tag(conn, tag), do: send(conn.owner, {:tag, tag})
+
   defp to_headers_list(headers) when is_list(headers), do: headers
   defp to_headers_list(headers) when is_map(headers), do: :maps.to_list(headers)
 
