@@ -82,6 +82,7 @@ defmodule CoAP.Connection do
     # 2s is the spec default
     @ack_timeout 2000
     # 1.5 is the spec default
+
     # gen_coap uses ack_timeout*0.5
     @ack_random_factor 1500
 
@@ -107,6 +108,7 @@ defmodule CoAP.Connection do
               retries: 0,
               max_retries: 0,
               retry_timeout: nil,
+              initial_retry_timeout: nil,
               in_payload: CoAP.Payload.empty(),
               out_payload: CoAP.Payload.empty(),
               next_message_id: nil,
@@ -120,7 +122,7 @@ defmodule CoAP.Connection do
         state
         | retries: options.retries,
           max_retries: options.retries,
-          retry_timeout: options.retry_timeout,
+          initial_retry_timeout: options.timeout,
           ack_timeout: options.ack_timeout || @ack_timeout,
           tag: options.tag
       }
@@ -255,6 +257,11 @@ defmodule CoAP.Connection do
   def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
 
   def handle_info({:tag, tag}, state), do: {:noreply, %{state | tag: tag}}
+
+  def retry_timeout(initial_retry_timeout, retry_num) do
+    # TODO: exponential backoff
+    (initial_retry_timeout * :math.pow(2, retry_num)) |> round()
+  end
 
   # TODO: connection timeout, set to original state?
 
@@ -527,19 +534,19 @@ defmodule CoAP.Connection do
          %{
            phase: :awaiting_peer_ack,
            message: message,
-           retry_timeout: timeout,
+           initial_retry_timeout: initial_retry_timeout,
            retries: retries,
+           max_retries: max_retries,
            tag: tag
          } = state
        ) do
     # retry delivering the cached message
     reply(message, state)
 
-    # TODO: exponential backoff
-    timeout = timeout * 2
-    timer = start_timer(timeout)
-
     remaining = retries - 1
+
+    timeout = retry_timeout(initial_retry_timeout, max_retries - remaining)
+    timer = start_timer(timeout)
 
     :telemetry.execute(
       [:coap_ex, :connection, :re_tried],

@@ -2,6 +2,7 @@ defmodule CoAP.Client do
   @moduledoc """
     CoAP Client interface
   """
+  alias CoAP.Connection
   alias CoAP.Message
 
   import Logger, only: [debug: 1]
@@ -14,19 +15,18 @@ defmodule CoAP.Client do
   defmodule Options do
     # spec default for max_retransmits
     @max_retries 4
-    @wait_timeout 10_000
+
+    @initial_retry_timeout 10_000
 
     @type t :: %__MODULE__{
             retries: integer,
-            retry_timeout: integer,
             timeout: integer,
             ack_timeout: integer,
             tag: any
           }
 
     defstruct retries: @max_retries,
-              retry_timeout: nil,
-              timeout: @wait_timeout,
+              timeout: @initial_retry_timeout,
               ack_timeout: nil,
               tag: nil
   end
@@ -122,11 +122,13 @@ defmodule CoAP.Client do
 
     debug("Client Request: #{inspect(message)}")
 
-    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}, options])
+    {:ok, connection} = Connection.start_link([self(), {host, port, token}, options])
 
     send(connection, {:deliver, message})
 
-    await_response(message, options.timeout)
+    wait_timeout = max_timeout_for_retries(options.timeout, options.retries)
+
+    await_response(message, wait_timeout)
   end
 
   defp await_response(_message, timeout) do
@@ -136,5 +138,20 @@ defmodule CoAP.Client do
     after
       timeout -> {:error, {:timeout, :await_response}}
     end
+  end
+
+  defp max_timeout_for_retries(initial_retry_timeout, num_retries, total \\ nil)
+
+  defp max_timeout_for_retries(initial_retry_timeout, num_retries, nil) do
+    total = Connection.retry_timeout(initial_retry_timeout, num_retries)
+    max_timeout_for_retries(initial_retry_timeout, num_retries, total)
+  end
+
+  defp max_timeout_for_retries(initial_retry_timeout, 0, total) do
+    total + initial_retry_timeout
+  end
+
+  defp max_timeout_for_retries(initial_retry_timeout, num_retries, total) do
+    total + Connection.retry_timeout(initial_retry_timeout, num_retries - 1)
   end
 end
