@@ -99,6 +99,7 @@ defmodule CoAP.Client do
   @spec request(request_type, request_method, request_url, binary, map) ::
           response
   def request(type, method, url, content \\ <<>>, options \\ %{}) do
+    connection_module = options[:connection_module] || CoAP.Connection
     uri = :uri_string.parse(url)
 
     host = uri[:host]
@@ -122,11 +123,15 @@ defmodule CoAP.Client do
 
     debug("Client Request: #{inspect(message)}")
 
-    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}, options])
+    {:ok, connection} = connection_module.start_link([self(), {host, port, token}, options])
 
-    send(connection, {:deliver, message})
+    try do
+      send(connection, {:deliver, message})
 
-    await_response(message, options.timeout)
+      await_response(message, options.timeout)
+    after
+      Process.exit(connection, :normal)
+    end
   end
 
   defp await_response(_message, timeout) do

@@ -199,6 +199,8 @@ defmodule CoAP.Connection do
     Return {:ok, state}
   """
   def init([client, {ip, port, token} = peer, options]) do
+    Process.flag(:trap_exit, true)
+
     # client is the endpoint
     # peer is the target ip/port?
     endpoint = {CoAP.Adapters.Client, client}

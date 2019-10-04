@@ -71,6 +71,27 @@ defmodule CoAP.ClientTest do
     end
   end
 
+  defmodule SlowEchoConnection do
+    use GenServer
+
+    def start_link(args), do: GenServer.start_link(__MODULE__, args)
+
+    def init(args) do
+      Process.flag(:trap_exit, true)
+      {:ok, args}
+    end
+
+    def handle_info({:deliver, message}, state) do
+      [client_pid, cid, _options] = state
+
+      Process.sleep(1000)
+
+      send(client_pid, {:deliver, message, cid})
+
+      {:noreply, state}
+    end
+  end
+
   test "get" do
     # pass a module that has a response
     # endpoint = Task.new(fn)
@@ -118,21 +139,13 @@ defmodule CoAP.ClientTest do
     assert byte_size(response.payload) == 2048
   end
 
-  # test "get a timed out response" do
-  #   # pass a module that has a response
-  #   # endpoint = Task.new(fn)
-  #   # start a socket server
-  #    CoAP.SocketServer.start([@port, {CoAP.Adapters.GenericServer, SlowBadEndpoint}])
-  #
-  #   # make a request with the client
-  #   response = CoAP.Client.get("coap://localhost:#{@port}/api")
-  #
-  #   IO.inspect(response)
-  #
-  #   assert response.message_id > 0
-  #   assert response.code_class == 2
-  #   assert response.code_detail == 1
-  #   assert response.payload == "Created"
-  #
-  # end
+  test "get with slow response" do
+    response =
+      CoAP.Client.request(:con, :get, "coap://127.0.0.1:#{@port + 5}/api", <<>>, %{
+        connection_module: SlowEchoConnection,
+        timeout: 500
+      })
+
+    assert response == {:error, {:timeout, :await_response}}
+  end
 end
