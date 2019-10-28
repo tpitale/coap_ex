@@ -535,11 +535,20 @@ defmodule CoAP.Connection do
     # retry delivering the cached message
     reply(message, state)
 
-    # TODO: exponential backoff
-    timeout = timeout * 2
-    timer = start_timer(timeout)
-
     remaining = retries - 1
+
+    timeout =
+      case remaining do
+        0 ->
+          # on the last retry, time out and return to the client after ack_timeout
+          ack_timeout(state)
+
+        _ ->
+          # TODO: exponential backoff
+          timeout * 2
+      end
+
+    timer = start_timer(timeout)
 
     :telemetry.execute(
       [:coap_ex, :connection, :re_tried],
