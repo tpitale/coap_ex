@@ -21,7 +21,7 @@ defmodule CoAP.SocketServer do
   use GenServer
 
   import CoAP.Util.BinaryFormatter, only: [to_hex: 1]
-  import Logger, only: [debug: 1]
+  import Logger, only: [debug: 1, error: 1]
 
   alias CoAP.Message
 
@@ -102,9 +102,16 @@ defmodule CoAP.SocketServer do
     {connection, new_state} =
       connection_for(message.request, {peer_ip, peer_port, message.token}, state)
 
-    # TODO: if it's alive?
-    send(connection, {:receive, message})
-    # TODO: error if dead process
+    case connection do
+      nil ->
+        error(
+          "CoAP socket received message for lost connection from " <>
+            "ip: #{inspect(peer_ip)}, port: #{inspect(peer_port)}.  Message: #{inspect(message)}"
+        )
+
+      c ->
+        send(c, {:receive, message})
+    end
 
     {:noreply, new_state}
   end
@@ -135,21 +142,15 @@ defmodule CoAP.SocketServer do
     Removes complete connection from the registry and monitoring
   """
   def handle_info({:DOWN, ref, :process, _from, reason}, state) do
-    type =
-      case client?(state) do
-        true -> :client
-        false -> :server
-      end
-
     {host, port, _} = Map.get(state.monitors, ref)
 
     :telemetry.execute(
       [:coap_ex, :connection, :connection_ended],
       %{},
-      %{type: type, host: host, port: port}
+      %{type: type(state), host: host, port: port}
     )
 
-    connection_complete(type, ref, reason, state)
+    connection_complete(type(state), ref, reason, state)
   end
 
   defp connection_complete(:server, ref, reason, %{monitors: monitors} = state) do
@@ -188,8 +189,8 @@ defmodule CoAP.SocketServer do
   defp connection_for(_request, connection_id, state) do
     connection = Map.get(state.connections, connection_id)
 
-    case connection do
-      nil ->
+    case {connection, type(state)} do
+      {nil, :server} ->
         {:ok, conn} = start_connection(self(), state.endpoint, connection_id, state.config)
         ref = Process.monitor(conn)
         debug("Started conn: #{inspect(conn)} for #{inspect(connection_id)}")
@@ -210,6 +211,11 @@ defmodule CoAP.SocketServer do
               monitors: Map.put(state.monitors, ref, connection_id)
           }
         }
+
+      {nil, :client} ->
+        # if this socket server was started to listen for a response as a client,
+        # the associated connection that was started by the client has died
+        {nil, state}
 
       _ ->
         {connection, state}
@@ -244,6 +250,6 @@ defmodule CoAP.SocketServer do
     end
   end
 
-  defp client?(%{port: 0}), do: true
-  defp client?(_), do: false
+  defp type(%{port: 0}), do: :client
+  defp type(_), do: :server
 end
