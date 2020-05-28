@@ -323,8 +323,14 @@ defmodule CoAP.Connection do
 
     :telemetry.execute(
       [:coap_ex, :connection, :block_sent],
-      %{size: byte_size(next_payload.data)},
-      %{message_id: message_id, token: token, block_number: number, tag: tag}
+      %{size: byte_size(bytes), block_number: number, more_blocks: block.more},
+      %{
+        message_id: message_id,
+        token: token,
+        block_size: state.out_payload.size,
+        total_size: byte_size(state.out_payload.data),
+        tag: tag
+      }
     )
 
     %{state | timer: timer, out_payload: next_payload, message: response}
@@ -370,11 +376,11 @@ defmodule CoAP.Connection do
 
     :telemetry.execute(
       [:coap_ex, :connection, :block_received],
-      %{size: byte_size(message.payload)},
+      %{size: byte_size(message.payload), block_number: number, more_blocks: true},
       %{
         message_id: message.message_id,
         token: message.token,
-        block_number: number,
+        block_size: size,
         tag: state.tag
       }
     )
@@ -391,7 +397,7 @@ defmodule CoAP.Connection do
   # Add the block to the in_payload
   # then proceed to receive the message as if it was not multipart
   defp receive_message(
-         %{multipart: %{more: false, number: number}} = message,
+         %{multipart: %{more: false, number: number, size: size}} = message,
          state
        )
        when number > 0 do
@@ -399,6 +405,17 @@ defmodule CoAP.Connection do
       state.in_payload
       |> Payload.add(number, message.payload)
       |> Payload.to_binary()
+
+    :telemetry.execute(
+      [:coap_ex, :connection, :block_received],
+      %{size: byte_size(message.payload), block_number: number, more_blocks: false},
+      %{
+        message_id: message.message_id,
+        token: message.token,
+        block_size: size,
+        tag: state.tag
+      }
+    )
 
     %{
       message
