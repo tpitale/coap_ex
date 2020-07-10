@@ -305,12 +305,18 @@ defmodule CoAP.Connection do
          %{phase: :awaiting_peer_ack, tag: tag} = state
        )
        when number > 0 do
-    timer = restart_timer(state.timer, ack_timeout(state))
-
     # Payload should calculate byte offset from next number
     {bytes, block, next_payload} = Payload.segment_at(state.out_payload, number)
 
-    # phase = if multipart.more, do: :awaiting_peer_ack, else: :app_ack_sent
+    timer =
+      case block.more do
+        true ->
+          restart_timer(state.timer, ack_timeout(state))
+
+        false ->
+          # if this is the last block in the transfer don't expect any additional messages
+          cancel_timer(state.timer)
+      end
 
     response = %{
       state.message
@@ -647,10 +653,10 @@ defmodule CoAP.Connection do
 
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
-  # defp cancel_timer(nil) do
-  #   IO.puts("No timer")
-  # end
-  defp cancel_timer(timer), do: Process.cancel_timer(timer)
+  defp cancel_timer(timer) do
+    Process.cancel_timer(timer)
+    nil
+  end
 
   defp restart_timer(nil, timeout), do: start_timer(timeout)
 
