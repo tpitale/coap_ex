@@ -653,8 +653,10 @@ defmodule CoAP.Connection do
 
   defp start_timer(timeout, key \\ :timeout), do: Process.send_after(self(), key, timeout)
 
+  defp cancel_timer(nil), do: nil
+
   defp cancel_timer(timer) do
-    if !is_nil(timer), do: Process.cancel_timer(timer)
+    Process.cancel_timer(timer)
     nil
   end
 
