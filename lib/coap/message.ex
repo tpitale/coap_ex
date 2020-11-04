@@ -21,22 +21,6 @@ defmodule CoAP.Message do
             payload: <<>>,
             raw_size: 0
 
-  @type t :: %__MODULE__{
-          version: integer,
-          type: request_type,
-          request: boolean,
-          code_class: integer,
-          code_detail: integer,
-          method: request_method | {integer, integer},
-          status: integer,
-          message_id: integer,
-          token: binary,
-          options: map,
-          multipart: CoAP.Multipart.t(),
-          payload: binary,
-          raw_size: integer
-        }
-
   @payload_marker 0xFF
 
   @methods %{
@@ -78,7 +62,24 @@ defmodule CoAP.Message do
 
   @type request_method :: :get | :post | :put | :delete
   @type status_code :: {integer, integer}
-  @type status_t :: {atom, atom}
+  @type status_t :: nil | {atom, atom}
+
+
+  @type t :: %__MODULE__{
+    version: integer,
+    type: request_type,
+    request: boolean,
+    code_class: integer,
+    code_detail: integer,
+    method: request_method | {integer, integer},
+    status: status_t,
+    message_id: integer,
+    token: binary,
+    options: map,
+    multipart: CoAP.Multipart.t(),
+    payload: binary,
+    raw_size: integer
+  }
 
   @types %{
     0 => :con,
