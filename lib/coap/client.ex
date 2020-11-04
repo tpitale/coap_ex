@@ -9,7 +9,8 @@ defmodule CoAP.Client do
   @type request_url :: binary
   @type request_type :: :con | :non | :ack | :reset
   @type request_method :: :get | :post | :put | :delete
-  @type response :: CoAP.Message.t() | {:error, any}
+  @type response_error :: {:timeout, :await_response} | any
+  @type response :: CoAP.Message.t() | {:error, response_error}
 
   defmodule Options do
     # spec default for max_retransmits
