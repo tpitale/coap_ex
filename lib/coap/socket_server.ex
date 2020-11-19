@@ -41,22 +41,19 @@ defmodule CoAP.SocketServer do
 
   # endpoint => server
   @doc """
-    init function for a server e.g., phoenix endpoint
+    `init` functions for Server (e.g., phoenix endpoint) and Client
 
-    Open a udp socket on the given port and store in state
-    Initialize connections and monitors empty maps in state
+    When only `endpoint` and `port` (and optionally `config`) are provided, init for Server:
+      Open a udp socket on the given port and store in state
+      Initialize connections and monitors empty maps in state
+
+    When `endpoint`, `host`, `port`, `token`, and `connection` are provided, init for Client:
+      Opens a socket for sending (and receiving responses on a random listener)
+      Does not listen on any known port for new messages
+      Started by a `Connection` to deliver a client request message
   """
   def init([endpoint, port]), do: init([endpoint, port, []])
 
-  # Used by Connection to start a udp port
-  # endpoint => client
-  @doc """
-    init function for a client
-
-    Opens a socket for sending (and receiving responses on a random listener)
-    Does not listen on any known port for new messages
-    Started by a `Connection` to deliver a client request message
-  """
   def init([endpoint, {host, port, token}, connection]) do
     {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
 
@@ -91,9 +88,7 @@ defmodule CoAP.SocketServer do
      }}
   end
 
-  @doc """
-    Receive udp packets, forward to the appropriate connection
-  """
+  # Receive udp packets, forward to the appropriate connection
   def handle_info({:udp, _socket, peer_ip, peer_port, data}, state) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
@@ -116,9 +111,7 @@ defmodule CoAP.SocketServer do
     {:noreply, new_state}
   end
 
-  @doc """
-    Deliver messages to be sent to a peer
-  """
+  # Deliver messages to be sent to a peer
   def handle_info({:deliver, message, {host, port} = _peer, tag}, %{socket: socket} = state) do
     data = Message.encode(message)
 
@@ -137,10 +130,8 @@ defmodule CoAP.SocketServer do
     {:noreply, state}
   end
 
-  @doc """
-    Handles message for completed connection
-    Removes complete connection from the registry and monitoring
-  """
+  # Handles message for completed connection
+  # Removes complete connection from the registry and monitoring
   def handle_info({:DOWN, ref, :process, _from, reason}, state) do
     {host, port, _} = Map.get(state.monitors, ref)
 
