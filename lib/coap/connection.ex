@@ -166,12 +166,18 @@ defmodule CoAP.Connection do
   # TODO: predefined defaults, merged with client/server-specific options
   # TODO: default adapter to GenericServer?
   @doc """
-    `init` function for Server process
+  `init` functions for Server and Client processes
 
+  For server process:
     `server` is the SocketServer process for the server `app`
     Wrap the adapter (Phoenix or GenericServer) and endpoint (actual "server") in a handler
 
-    Return {:ok, state}
+  For Client process:
+    `client`: `CoAP.Client`
+    `endpoint`: the wrapped client in an adapter
+    `server`: SocketServer started for the endpoint and peer tuple
+
+    Wrap the adapter and the client in a handler
   """
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer, config]) do
     {:ok, handler} = start_handler(adapter, endpoint)
@@ -187,17 +193,6 @@ defmodule CoAP.Connection do
      |> State.add_config(config)}
   end
 
-  @doc """
-    `init` for Client usage
-
-    `client`: `CoAP.Client`
-    `endpoint`: the wrapped client in an adapter
-    `server`: SocketServer started for the endpoint and peer tuple
-
-    Wrap the adapter and the client in a handler
-
-    Return {:ok, state}
-  """
   def init([client, {ip, port, token} = peer, options]) do
     # client is the endpoint
     # peer is the target ip/port?

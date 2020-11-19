@@ -64,22 +64,21 @@ defmodule CoAP.Message do
   @type status_code :: {integer, integer}
   @type status_t :: nil | {atom, atom}
 
-
   @type t :: %__MODULE__{
-    version: integer,
-    type: request_type,
-    request: boolean,
-    code_class: integer,
-    code_detail: integer,
-    method: request_method | {integer, integer},
-    status: status_t,
-    message_id: integer,
-    token: binary,
-    options: map,
-    multipart: CoAP.Multipart.t(),
-    payload: binary,
-    raw_size: integer
-  }
+          version: integer,
+          type: request_type,
+          request: boolean,
+          code_class: integer,
+          code_detail: integer,
+          method: request_method | {integer, integer},
+          status: status_t,
+          message_id: integer,
+          token: binary,
+          options: map,
+          multipart: CoAP.Multipart.t(),
+          payload: binary,
+          raw_size: integer
+        }
 
   @types %{
     0 => :con,
@@ -104,18 +103,6 @@ defmodule CoAP.Message do
                           end)
 
   @doc """
-  Encode a Message struct, with a multipart/block-wise transfer options, as a binary coap
-  """
-  @spec encode(t()) :: binary
-  def encode(%__MODULE__{multipart: %Multipart{}} = message) do
-    # Always check code_detail in case the message was made directly, not decoded
-    blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
-
-    %{message | options: Map.merge(message.options, blocks), multipart: nil}
-    |> encode()
-  end
-
-  @doc """
   Encode a Message struct as binary coap
 
   Examples
@@ -137,8 +124,16 @@ defmodule CoAP.Message do
       iex> }
       iex> CoAP.Message.encode(message)
       <<0x44, 0x03, 0x31, 0xfc, 0x7b, 0x5c, 0xd3, 0xde, 0xb8, 0x72, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x49, 0x77, 0x68, 0x6f, 0x3d, 0x77, 0x6f, 0x72, 0x6c, 0x64, 0xff, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61, 0x64>>
-
   """
+  @spec encode(t()) :: binary
+  def encode(%__MODULE__{multipart: %Multipart{}} = message) do
+    # Always check code_detail in case the message was made directly, not decoded
+    blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
+
+    %{message | options: Map.merge(message.options, blocks), multipart: nil}
+    |> encode()
+  end
+
   @spec encode(t()) :: binary
   def encode(%__MODULE__{
         version: version,
@@ -380,7 +375,7 @@ defmodule CoAP.Message do
   end
 
   @doc """
-  Create the basic response for a con message
+  Create the basic response for a message
   """
   @spec response_for(t()) :: t()
   def response_for(%__MODULE__{type: :con} = message) do
@@ -391,9 +386,6 @@ defmodule CoAP.Message do
     }
   end
 
-  @doc """
-  Create the basic response for a non message
-  """
   @spec response_for(t()) :: t()
   def response_for(%__MODULE__{type: :non} = message) do
     %__MODULE__{
@@ -430,7 +422,7 @@ defmodule CoAP.Message do
   end
 
   @doc """
-  Create response including status and payload, used in app => peer response
+  Create response including status and payload
   """
   @spec response_for(status_code, binary, t()) :: t()
   def response_for({code_class, code_detail}, payload, message) do
@@ -442,9 +434,6 @@ defmodule CoAP.Message do
     }
   end
 
-  @doc """
-  Create response including method and payload
-  """
   @spec response_for(request_method(), binary, t()) :: t()
   def response_for(method, payload, message) do
     %__MODULE__{response_for(message) | method: method, payload: payload}
