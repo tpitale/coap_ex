@@ -9,18 +9,14 @@ env:
 jobs:
   checkout:
     runs-on: ubuntu-latest
-    container: circleci/elixir:1.11
     steps:
       - uses: actions/checkout@v2
-      - run: mix local.hex --force --if-missing
-      - run: mix local.rebar --force --if-missing
-      - run: mix deps.get
       - uses: actions/upload-artifact@v2
         with:
           name: project
           path: .
 
-  build:
+  deps:
     needs: [checkout]
     runs-on: ubuntu-latest
     container: circleci/elixir:1.11
@@ -28,6 +24,22 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: project
+      - run: mix local.hex --force --if-missing
+      - run: mix local.rebar --force --if-missing
+      - run: mix deps.get
+      - uses: actions/upload-artifact@v2
+        with:
+          name: deps
+          path: .
+
+  build:
+    needs: [deps]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: deps
       - run: mix compile --warnings-as-errors
       - uses: actions/upload-artifact@v2
         with:
@@ -35,33 +47,41 @@ jobs:
           path: _build
 
   format:
-    needs: [checkout]
+    needs: [deps]
     runs-on: ubuntu-latest
     container: circleci/elixir:1.11
     steps:
       - uses: actions/download-artifact@v2
+        with:
+          name: deps
       - run: mix format --check-formatted
 
   dialyzer:
-    needs: [checkout]
+    needs: [deps]
     runs-on: ubuntu-latest
     container: circleci/elixir:1.11
     steps:
       - uses: actions/download-artifact@v2
+        with:
+          name: deps
       - run: mix dialyzer
 
   credo:
-    needs: [checkout]
+    needs: [deps]
     runs-on: ubuntu-latest
     container: circleci/elixir:1.11
     steps:
       - uses: actions/download-artifact@v2
+        with:
+          name: deps
       - run: mix credo
 
   test:
-    needs: [checkout]
+    needs: [deps]
     runs-on: ubuntu-latest
     container: circleci/elixir:1.11
     steps:
       - uses: actions/download-artifact@v2
+        with:
+          name: deps
       - run: mix test
