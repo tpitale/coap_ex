@@ -316,7 +316,7 @@ defmodule CoAP.Message do
       %CoAP.Multipart{multipart: false}
 
   """
-  # TODO: test if either block1 or block2 is nil
+  # _TODO: test if either block1 or block2 is nil
   @spec multipart(boolean, %{block1: CoAP.Block.tuple_t(), block2: CoAP.Block.tuple_t()}) ::
           CoAP.Multipart.t()
   def multipart(request, options) do
