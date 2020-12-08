@@ -7,7 +7,8 @@ defmodule Coap.MixProject do
       version: "0.1.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: dialyzer()
     ]
   end
 
@@ -31,6 +32,15 @@ defmodule Coap.MixProject do
       # Runtime
       {:plug, "~> 1.11"},
       {:telemetry, "~> 0.4.0"}
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_ignore_apps: [:credo],
+      plt_add_apps: [:ex_unit, :mix],
+      ignore_warnings: ".dialyzer/ignore.exs",
+      plt_file: {:no_warn, ".dialyzer/cache.plt"}
     ]
   end
 end
