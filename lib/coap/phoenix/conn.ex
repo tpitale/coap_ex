@@ -27,14 +27,11 @@ defmodule CoAP.Phoenix.Conn do
       query_string: qs,
       req_headers: to_headers_list(headers),
       request_path: path,
-      # TODO: coaps
       scheme: "coap"
     }
   end
 
   def send_resp(req, status, _headers, body) do
-    # IO.puts("#{inspect(req)} returns #{inspect(status)}, #{inspect(headers)}, #{inspect(body)}")
-
     message = req.message
     connection = req.owner
 
@@ -46,7 +43,6 @@ defmodule CoAP.Phoenix.Conn do
       code_detail: code_detail,
       message_id: message.message_id,
       token: message.token,
-      # TODO: options from filtered headers
       payload: body
     }
 

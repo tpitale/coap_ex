@@ -8,7 +8,7 @@ defmodule CoAP.Block do
   @type binary_t_large :: <<_::32>>
   @type binary_t :: binary_t_small | binary_t_medium | binary_t_large
 
-  # TODO: if more: false, a size_exponent of 0 should be ignored?
+  # _TODO: if more: false, a size_exponent of 0 should be ignored?
   # otherwise size_exponent of 0 results in size: 16
 
   @doc """

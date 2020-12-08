@@ -57,7 +57,6 @@ defmodule CoAP.SocketServer do
   def init([endpoint, {host, port, token}, connection]) do
     {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
 
-    # TODO: use handle_continue to do this
     ip = normalize_host(host)
     connection_id = {ip, port, token}
 
@@ -154,8 +153,6 @@ defmodule CoAP.SocketServer do
       }:#{inspect(connection)}:#{inspect(ref)}"
     )
 
-    # TODO: handle noproc
-
     {:noreply,
      %{
        state
@@ -213,7 +210,6 @@ defmodule CoAP.SocketServer do
     end
   end
 
-  # TODO: move to CoAP
   defp start_connection(server, endpoint, peer, config) do
     DynamicSupervisor.start_child(
       CoAP.ConnectionSupervisor,

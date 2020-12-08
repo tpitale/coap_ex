@@ -66,7 +66,6 @@ defmodule CoAP.Phoenix.Request do
   def build(%Message{options: options} = message, {address, port}, owner, config \\ %{}) do
     _ip_string = Enum.join(Tuple.to_list(address), ".")
 
-    # TODO: defstruct?
     %{
       method: message |> method,
       path: options[:uri_path] |> Enum.join("/"),

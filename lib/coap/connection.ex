@@ -163,8 +163,6 @@ defmodule CoAP.Connection do
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
-  # TODO: predefined defaults, merged with client/server-specific options
-  # TODO: default adapter to GenericServer?
   @doc """
   `init` functions for Server and Client processes
 
@@ -214,10 +212,6 @@ defmodule CoAP.Connection do
   end
 
   def handle_info({:receive, %Message{} = message}, state) do
-    # TODO: connection timeouts
-    # TODO: start timer for conn
-    # TODO: check if the message_id matches what we may have already sent?
-
     :telemetry.execute(
       [:coap_ex, :connection, :data_received],
       %{size: message.raw_size},
@@ -251,7 +245,7 @@ defmodule CoAP.Connection do
 
   def handle_info({:tag, tag}, state), do: {:noreply, %{state | tag: tag}}
 
-  # TODO: connection timeout, set to original state?
+  # _TODO: connection timeout, set to original state?
 
   # def handle_info(:retry, state)
 
@@ -260,17 +254,17 @@ defmodule CoAP.Connection do
 
   # RECEIVE ====================================================================
   # con -> reset
-  # TODO: how do we get a nil method, vs a response
+  # _TODO: how do we get a nil method, vs a response
   # defp receive_message(%Message{method: nil, type: :con} = message, %{phase: :idle} = state) do
-  #   TODO: peer ack with reset, next state is peer_ack_sent
+  #   _TODO: peer ack with reset, next state is peer_ack_sent
   #   Message.response_for(message)
   #   reply(:reset, message, state[:server])
   # end
 
-  # TODO: resend reset?
-  # TODO: what is the message if the client has to re-request after a processing timeout from the app?
+  # _TODO: resend reset?
+  # _TODO: what is the message if the client has to re-request after a processing timeout from the app?
 
-  # TODO: resend stored message (ack)
+  # _TODO: resend stored message (ack)
   defp receive_message(_message, %{phase: :peer_ack_sent} = state), do: state
 
   # Do nothing if we receive a message from peer during these states; we should be shutting down
@@ -355,7 +349,7 @@ defmodule CoAP.Connection do
        ) do
     timer = restart_timer(state.timer, ack_timeout(state))
 
-    # TODO: respect the number/size from control
+    # _TODO: respect the number/size from control
     # more must be false, must use same size on subsequent request
     multipart = Multipart.build(nil, Block.build({number + 1, false, size}))
 
@@ -363,7 +357,7 @@ defmodule CoAP.Connection do
     response =
       case message.status do
         # client sends original message with new control number
-        # TODO: what parts of the message are we supposed to send back?
+        # _TODO: what parts of the message are we supposed to send back?
         {:ok, _} ->
           Message.next_message(state.message, next_message_id(state.message.message_id))
 
@@ -456,7 +450,7 @@ defmodule CoAP.Connection do
   defp receive_message(message, %{phase: :awaiting_peer_ack} = state) do
     cancel_timer(state.timer)
 
-    # TODO: what happens if this is an empty ACK and we get another response later?
+    # _TODO: what happens if this is an empty ACK and we get another response later?
     # Could we go back to being idle?
     handle(message, state.handler, peer_for(state))
 
@@ -464,17 +458,17 @@ defmodule CoAP.Connection do
   end
 
   # DELIVER ====================================================================
-  # TODO: deliver message for got_non as a NON message, phase becomes :sent_non
-  # TODO: deliver message for peer_ack_sent as a CON message, phase becomes :awaiting_peer_ack
+  # _TODO: deliver message for got_non as a NON message, phase becomes :sent_non
+  # _TODO: deliver message for peer_ack_sent as a CON message, phase becomes :awaiting_peer_ack
 
   defp deliver_message(message, %{phase: :awaiting_app_ack} = state) do
-    # TODO: does the message include the original request control?
+    # _TODO: does the message include the original request control?
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     # Cancel the app_ack waiting timeout
     cancel_timer(state.timer)
 
-    # TODO: what happens if the app response is a status code, no code_class/detail tuple?
+    # _TODO: what happens if the app response is a status code, no code_class/detail tuple?
     response =
       Message.response_for(
         {message.code_class, message.code_detail},
@@ -501,7 +495,7 @@ defmodule CoAP.Connection do
          %Message{type: type, message_id: message_id} = message,
          %{phase: :idle, next_message_id: next_message_id} = state
        ) do
-    # TODO: get payload size from the request control
+    # _TODO: get payload size from the request control
     {bytes, block, payload} = Payload.segment_at(message.payload, @default_payload_size, 0)
 
     # The server should send back the same message id of the request
@@ -562,7 +556,6 @@ defmodule CoAP.Connection do
           ack_timeout(state)
 
         _ ->
-          # TODO: exponential backoff
           timeout * 2
       end
 
@@ -676,7 +669,6 @@ defmodule CoAP.Connection do
   end
 
   # HANDLER
-  # TODO: move to CoAP
   defp start_handler({adapter, endpoint}), do: start_handler(adapter, endpoint)
 
   defp start_handler(adapter, endpoint) do
@@ -689,7 +681,6 @@ defmodule CoAP.Connection do
     )
   end
 
-  # TODO: move to CoAP
   defp start_socket_for(endpoint, peer) do
     DynamicSupervisor.start_child(
       CoAP.SocketServerSupervisor,

@@ -22,11 +22,15 @@ defmodule Coap.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:plug, "~> 1.0"},
+      # Dev
+      {:dialyxir, "~> 1.0.0", only: :dev, runtime: false},
+      {:credo, "~> 1.5"},
       {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]},
       {:stream_data, "~> 0.1", only: :test},
-      {:dialyxir, "~> 1.0.0", only: :dev, runtime: false},
       {:ex_doc, "~> 0.19", only: :dev, runtime: false},
+
+      # Runtime
+      {:plug, "~> 1.0"},
       {:telemetry, "~> 0.4.0"}
     ]
   end

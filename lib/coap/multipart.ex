@@ -11,7 +11,6 @@ defmodule CoAP.Multipart do
 
   alias CoAP.Block
 
-  # TODO: redefine as description/control based on request/response
   defstruct multipart: false,
             description: nil,
             control: nil,
@@ -90,7 +89,7 @@ defmodule CoAP.Multipart do
 
   def build(nil, nil), do: %__MODULE__{multipart: false, description: nil, control: nil}
 
-  @spec as_blocks(true, CoAP.Multipart.t()) :: %{block1: CoAP.Block.t(), block2: CoAP.Block.t()}
+  @spec as_blocks(boolean, CoAP.Multipart.t()) :: %{block1: CoAP.Block.t(), block2: CoAP.Block.t()}
   def as_blocks(true, multipart) do
     %{
       block1: multipart.description |> Block.to_tuple(),
@@ -99,8 +98,6 @@ defmodule CoAP.Multipart do
     |> reject_nil_values()
   end
 
-  # TODO: if we get nil here, that's wrong
-  @spec as_blocks(false, CoAP.Multipart.t()) :: %{block1: CoAP.Block.t(), block2: CoAP.Block.t()}
   def as_blocks(false, multipart) do
     %{
       block1: multipart.control |> Block.to_tuple(),
