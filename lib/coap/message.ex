@@ -64,18 +64,20 @@ defmodule CoAP.Message do
   @type status_code :: {integer, integer}
   @type status_t :: nil | {atom, atom}
 
+  @type request_type :: :con | :non | :ack | :reset
+
   @type t :: %__MODULE__{
           version: integer,
           type: request_type,
-          request: boolean,
+          request: boolean | nil,
           code_class: integer,
           code_detail: integer,
-          method: request_method | {integer, integer},
+          method: request_method | nil | {integer, integer},
           status: status_t,
           message_id: integer,
           token: binary,
           options: map,
-          multipart: CoAP.Multipart.t(),
+          multipart: CoAP.Multipart.t() | nil,
           payload: binary,
           raw_size: integer
         }
@@ -87,8 +89,6 @@ defmodule CoAP.Message do
     3 => :reset
   }
   @types_map Enum.into(@types, %{}, fn {k, v} -> {v, k} end)
-
-  @type request_type :: :con | :non | :ack | :reset
 
   @message_header_format (quote do
                             <<
@@ -130,11 +130,10 @@ defmodule CoAP.Message do
     # Always check code_detail in case the message was made directly, not decoded
     blocks = Multipart.as_blocks(request?(message.code_class), message.multipart)
 
-    %{message | options: Map.merge(message.options, blocks), multipart: nil}
+    %__MODULE__{message | options: Map.merge(message.options, blocks), multipart: nil}
     |> encode()
   end
 
-  @spec encode(t()) :: binary
   def encode(%__MODULE__{
         version: version,
         type: type,
@@ -324,19 +323,19 @@ defmodule CoAP.Message do
     Multipart.build(request, options[:block1], options[:block2])
   end
 
-  @spec request?(0) :: true
+  @spec request?(any) :: boolean
   defp request?(0), do: true
-  @spec request?(any) :: false
+
   defp request?(_), do: false
 
-  @spec method_for(0, integer) :: request_method()
+  @spec method_for(any, any) :: request_method() | nil
   defp method_for(0, code_detail), do: @methods[{0, code_detail}]
-  @spec method_for(any, any) :: nil
+
   defp method_for(_code_class, _code_detail), do: nil
 
-  @spec status_for(0, any) :: nil
+  @spec status_for(integer, any) :: nil | status_t
   defp status_for(0, _code_detail), do: nil
-  @spec status_for(integer, integer) :: status_t
+
   defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
 
   @doc """
@@ -371,7 +370,7 @@ defmodule CoAP.Message do
   """
   @spec next_message(t(), integer) :: t()
   def next_message(%__MODULE__{} = message, next_message_id) do
-    %{message | message_id: next_message_id, payload: <<>>, multipart: nil}
+    %__MODULE__{message | message_id: next_message_id, payload: <<>>, multipart: nil}
   end
 
   @doc """
@@ -386,7 +385,6 @@ defmodule CoAP.Message do
     }
   end
 
-  @spec response_for(t()) :: t()
   def response_for(%__MODULE__{type: :non} = message) do
     %__MODULE__{
       type: :non,
