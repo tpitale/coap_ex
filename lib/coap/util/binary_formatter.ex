@@ -1,4 +1,7 @@
 defmodule CoAP.Util.BinaryFormatter do
+  @moduledoc """
+  Utils for formatting binaries
+  """
   @max_allowed_bytes 1000
 
   # truncate long values

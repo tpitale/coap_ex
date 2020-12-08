@@ -1,8 +1,13 @@
 defmodule CoAP.Phoenix.Conn do
+  @moduledoc """
+  (kind of) `Plug.Conn.Adapter` for CoAP
+  """
   # @behaviour Plug.Conn.Adapter
 
   alias CoAP.Message
 
+  @doc false
+  @spec conn(map) :: Plug.Conn.t()
   def conn(req) do
     %{
       path: path,
@@ -31,6 +36,7 @@ defmodule CoAP.Phoenix.Conn do
     }
   end
 
+  @doc false
   def send_resp(req, status, _headers, body) do
     message = req.message
     connection = req.owner
@@ -51,18 +57,23 @@ defmodule CoAP.Phoenix.Conn do
     {:ok, nil, req}
   end
 
+  @doc false
   def read_req_body(state, _opts) do
     {:ok, state[:message].payload, state}
   end
 
+  @doc false
+  def tag(conn, tag), do: send(conn.owner, {:tag, tag})
+
+  ###
+  ### Priv
+  ###
   defp split_path(path) do
     path
     |> :binary.split("/", [:global])
     # Remove empty parts
     |> Enum.filter(fn part -> part != "" end)
   end
-
-  def tag(conn, tag), do: send(conn.owner, {:tag, tag})
 
   defp to_headers_list(headers) when is_list(headers), do: headers
   defp to_headers_list(headers) when is_map(headers), do: :maps.to_list(headers)
