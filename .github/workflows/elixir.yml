@@ -1,21 +1,67 @@
 name: Elixir CI
 
-on: push
+on: [push, pull_request]
+
+env:
+  MIX_ARCHIVES: /home/circleci/project/.mix/archives
+  MIX_HOME: /home/circleci/project/.mix
 
 jobs:
-  build:
-
+  checkout:
     runs-on: ubuntu-latest
-
-    container:
-      image: elixir:1.9.1-slim
-
+    container: circleci/elixir:1.11
     steps:
-    - uses: actions/checkout@v1
-    - name: Install Dependencies
-      run: |
-        mix local.rebar --force
-        mix local.hex --force
-        mix deps.get
-    - name: Run Tests
-      run: mix test
+      - uses: actions/checkout@v2
+      - run: mix local.hex --force --if-missing
+      - run: mix local.rebar --force --if-missing
+      - run: mix deps.get
+      - uses: actions/upload-artifact@v2
+        with:
+          name: project
+          path: .
+
+  build:
+    needs: [checkout]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: project
+      - run: mix compile --warnings-as-errors
+      - uses: actions/upload-artifact@v2
+        with:
+          name: build
+          path: _build
+
+  format:
+    needs: [checkout]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+      - run: mix format --check-formatted
+
+  dialyzer:
+    needs: [checkout]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+      - run: mix dialyzer
+
+  credo:
+    needs: [checkout]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+      - run: mix credo
+
+  test:
+    needs: [checkout]
+    runs-on: ubuntu-latest
+    container: circleci/elixir:1.11
+    steps:
+      - uses: actions/download-artifact@v2
+      - run: mix test
