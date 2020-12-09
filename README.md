@@ -96,6 +96,27 @@ Coap_ex emits telemetry events for data sent and received, block transfers, and 
 )
 ```
 
+Each connection can be tagged when the connection is created, and this tag will be passed to the telemetry handler.  This makes it possible to monitor a single connection among many connections. The tag can be any value.
+
+To tag a client connection, pass a tag in the request options:
+
+```
+CoAP.Client.request(
+  :con,
+  method,
+  url,
+  request_payload,
+  %{retries: retries, timeout: @wait_timeout, ack_timeout: timeout, tag: tag}
+)
+ ```
+ 
+ To tag a server connection if using Phoenix:
+ 
+ ```
+ # in phoenix controller
+ CoAP.Phoenix.Conn.tag(conn, tag)
+ ```
+
 # TODO:
 
 * [x] handle multiple parts for some headers, like "Uri-Path"
