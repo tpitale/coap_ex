@@ -150,7 +150,7 @@ defmodule CoAP.Connection do
   @default_payload_size 512
 
   # 16 bit number
-  @max_message_id 65535
+  @max_message_id 65_535
 
   def child_spec([server, endpoint, peer, config]) do
     %{
