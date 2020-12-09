@@ -74,6 +74,28 @@ Simple client usage:
 CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 ```
 
+# Telemetry #
+
+Coap_ex emits telemetry events for data sent and received, block transfers, and other connection-releated events.  To consume them, attach a handler in your app startup like so:
+
+```
+:telemetry.attach_many(
+  "myapp-coap-ex-connection",
+  [
+    [:coap_ex, :connection, :block_sent],
+    [:coap_ex, :connection, :block_received],
+    [:coap_ex, :connection, :connection_started],
+    [:coap_ex, :connection, :connection_ended],
+    [:coap_ex, :connection, :data_sent],
+    [:coap_ex, :connection, :data_received],
+    [:coap_ex, :connection, :re_tried],
+    [:coap_ex, :connection, :timed_out]
+  ],
+  &MyHandler.handle_event/4,
+  nil
+)
+```
+
 # TODO:
 
 * [x] handle multiple parts for some headers, like "Uri-Path"
