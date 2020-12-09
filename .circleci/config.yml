@@ -1,153 +1,23 @@
-version: 2.1 # use CircleCI 2.1 instead of CircleCI Classic
-
-x-common:
-  job-common: &job-common
-    working_directory: /home/circleci/project
-    docker:
-      - image: circleci/elixir:1.11
-        environment:
-          MIX_ARCHIVES: /home/circleci/project/.mix/archives
-          MIX_HOME: /home/circleci/project/.mix
-  deploy-common: &deploy-common
-    working_directory: /home/circleci/project
-    docker:
-      - image: circleci/buildpack-deps
-
-x-steps:
-  - &save-deps-cache
-    save_cache:
-      key: v1-deps-cache-{{ .Branch }}-{{ checksum "mix.lock" }}
-      paths: ["deps"]
-  - &restore-deps-cache
-    restore_cache:
-      keys:
-        - v1-deps-cache-{{ .Branch }}-{{ checksum "mix.lock" }}
-  - &save-plt-cache
-    save_cache:
-      key: v1-plt-cache-{{ .Branch }}-{{ checksum ".dialyzer/cache.plt" }}
-      paths: [".dialyzer/cache.plt"]
-  - &restore-plt-cache
-    restore_cache:
-      keys:
-        - v1-plt-cache-{{ .Branch }}-{{ checksum ".dialyzer/cache.plt" }}
-  - &attach-workspace
-    attach_workspace:
-      at: /home/circleci
-
-x-filters:
-  only-pr: &only-pr
-    branches:
-      ignore: /^(master)$/
-  only-master: &only-master
-    branches:
-      only: /^master$/
-
+# Elixir CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-elixir/ for more details
+version: 2
 jobs:
-  setup:
-    <<: *job-common
+  build:
+    docker:
+      # specify the version here
+      - image: circleci/elixir:1.4
+
+      # Specify service dependencies here if necessary
+      # CircleCI maintains a library of pre-built images
+      # documented at https://circleci.com/docs/2.0/circleci-images/
+      # - image: circleci/postgres:9.4
+
+    working_directory: ~/repo
     steps:
       - checkout
-      - *restore-deps-cache
-      - run: 
-          name: Install Hex
-          command: mix local.hex --force --if-missing
-      - run: 
-          name: Install rebar
-          command: mix local.rebar --force --if-missing
-      - run: 
-          name: Install project's deps
-          command: mix deps.get
-      - *save-deps-cache
-      - persist_to_workspace:
-          root: /home/circleci/
-          paths: ["project"]
 
-  build:
-    <<: *job-common
-    steps:
-      - *attach-workspace
-      - run: 
-          name: Build project
-          command: mix compile --warnings-as-errors
-      - persist_to_workspace:
-          root: /home/circleci/
-          paths: ["project/_build"]
-
-  format:
-    <<: *job-common
-    steps:
-      - *attach-workspace
-      - run: 
-          name: Check formatting rules
-          command: mix format --check-formatted
-
-  dialyzer:
-    <<: *job-common
-    steps:
-      - *attach-workspace
-      - run: 
-          name: Dialyzer static analysis
-          command: mix dialyzer
-
-  credo:
-    <<: *job-common
-    steps:
-      - *attach-workspace
-      - run:
-          name: Check coding rules
-          command: mix credo
-
-  test:
-    <<: *job-common
-    steps:
-      - *attach-workspace
+      # specify any bash command here prefixed with `run: `
+      - run: mix deps.get
+      - run: mix ecto.create
       - run: mix test
-
-workflows:
-  version: 2
-  on-pull-request:
-    jobs:
-      - setup:
-          filters:
-            <<: *only-pr
-      - build:
-          requires:
-            - setup
-          filters:
-            <<: *only-pr
-      - format:
-          requires:
-            - setup
-          filters:
-            <<: *only-pr
-      - credo:
-          requires:
-            - build
-          filters:
-            <<: *only-pr
-      - dialyzer:
-          requires:
-            - build
-          filters:
-            <<: *only-pr
-      - test:
-          requires:
-            - build
-          filters:
-            <<: *only-pr
-
-  on-merge:
-    jobs:
-      - setup:
-          filters:
-            <<: *only-master
-      - build:
-          requires:
-            - setup
-          filters:
-            <<: *only-master
-      - test:
-          requires:
-            - setup
-          filters:
-            <<: *only-master
