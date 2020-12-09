@@ -1,8 +1,6 @@
 defmodule CoAP.MessageOptions do
   # @payload_marker 0xFF
 
-  # TODO: struct for all options?
-
   @doc """
 
   Examples
@@ -69,7 +67,6 @@ defmodule CoAP.MessageOptions do
             {tail, delta_sum + delta}
 
           delta == 13 ->
-            # TODO: size here `::size(4)`?
             <<key, new_tail1::binary>> = tail
             {new_tail1, delta_sum + key + 13}
 
@@ -84,7 +81,6 @@ defmodule CoAP.MessageOptions do
             {tail1, length}
 
           length == 13 ->
-            # TODO: size here `::size(4)`?
             <<extended_option_length, new_tail2::binary>> = tail1
             {new_tail2, extended_option_length + 13}
 
@@ -175,7 +171,6 @@ defmodule CoAP.MessageOptions do
         acc::binary,
         delta::size(4),
         length::size(4),
-        # TODO: what size should this be?
         extended_number::binary,
         extended_length::binary,
         value::binary

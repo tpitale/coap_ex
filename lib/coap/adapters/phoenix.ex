@@ -29,7 +29,6 @@ defmodule CoAP.Adapters.Phoenix do
   end
 
   defp process(req, {endpoint, opts}) do
-    # TODO: conn_from_message(message)
     case endpoint.__handler__(@connection.conn(req), opts) do
       {:plug, conn, handler, opts} ->
         %{adapter: {@connection, _req}} =

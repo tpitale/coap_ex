@@ -7,7 +7,8 @@ defmodule Coap.MixProject do
       version: "0.1.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: dialyzer()
     ]
   end
 
@@ -22,12 +23,24 @@ defmodule Coap.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:plug, "~> 1.0"},
-      {:gen_coap, github: "gotthardp/gen_coap", only: [:dev, :test]},
+      # Dev
+      {:dialyxir, "~> 1.0.0", only: :dev, runtime: false},
+      {:credo, "~> 1.5"},
       {:stream_data, "~> 0.1", only: :test},
-      {:dialyxir, "~> 1.0.0-rc.6", only: :dev, runtime: false},
-      {:ex_doc, "~> 0.19", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.23", only: :dev, runtime: false},
+
+      # Runtime
+      {:plug, "~> 1.11"},
       {:telemetry, "~> 0.4.0"}
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_ignore_apps: [:credo],
+      plt_add_apps: [:ex_unit, :mix],
+      ignore_warnings: ".dialyzer/ignore.exs",
+      plt_file: {:no_warn, ".dialyzer/cache.plt"}
     ]
   end
 end

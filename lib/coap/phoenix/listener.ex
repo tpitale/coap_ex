@@ -30,16 +30,15 @@ defmodule CoAP.Phoenix.Listener do
     GenServer.start_link(__MODULE__, endpoint)
   end
 
-  # TODO: spec for this
   def init(endpoint) do
-    # TODO: take this config and use it to start a CoAP.SocketServer
+    # _TODO: take this config and use it to start a CoAP.SocketServer
     config = endpoint.config(:coap)
 
     info("Starting CoAP.Phoenix.Listener: #{inspect(config)}")
 
     {:ok, server} = CoAP.SocketServer.start_link([{@adapter, endpoint}, config[:port], config])
-    # TODO: ref and monitor?
-    # TODO: die if server dies?
+    # _TODO: ref and monitor?
+    # _TODO: die if server dies?
 
     {:ok, %{endpoint: endpoint, config: config, server: server}}
   end

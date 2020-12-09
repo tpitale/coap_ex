@@ -32,7 +32,7 @@ defmodule CoAP.Client do
               tag: nil
   end
 
-  # TODO: options: headers/params?
+  # _TODO: options: headers/params?
 
   @doc """
     Perform a confirmable, GET request to a URL

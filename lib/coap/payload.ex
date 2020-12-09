@@ -74,7 +74,6 @@ defmodule CoAP.Payload do
     part_size = Enum.min([data_size - offset, size])
     more = data_size > offset + part_size
 
-    # TODO: splits into the appropriate segment
     data = data |> :binary.part(offset, part_size)
 
     block = Block.build({number, more, size})

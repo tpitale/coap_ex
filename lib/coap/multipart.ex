@@ -11,7 +11,6 @@ defmodule CoAP.Multipart do
 
   alias CoAP.Block
 
-  # TODO: redefine as description/control based on request/response
   defstruct multipart: false,
             description: nil,
             control: nil,
@@ -32,22 +31,19 @@ defmodule CoAP.Multipart do
           requested_number: integer
         }
 
-  @spec build(any, nil, nil) :: t()
+  @spec build(any, any, any) :: t()
   def build(_request, nil, nil), do: %__MODULE__{}
 
   # Request variation
-  @spec build(boolean, CoAP.Block.t(), CoAP.Block.t()) :: t()
   def build(true, block1, block2) do
     build(Block.build(block1), Block.build(block2))
   end
 
   # Response variation
-  @spec build(boolean, CoAP.Block.t(), CoAP.Block.t()) :: t()
   def build(false, block1, block2) do
     build(Block.build(block2), Block.build(block1))
   end
 
-  @spec build(CoAP.Block.t(), CoAP.Block.t()) :: t()
   def build(%Block{} = description, %Block{} = control) do
     %__MODULE__{
       multipart: true,
@@ -61,7 +57,7 @@ defmodule CoAP.Multipart do
     }
   end
 
-  @spec build(nil, CoAP.Block.t()) :: t()
+  @spec build(CoAP.Block.t() | nil, CoAP.Block.t() | nil) :: t()
   def build(nil, %Block{} = control) do
     %__MODULE__{
       multipart: true,
@@ -72,7 +68,6 @@ defmodule CoAP.Multipart do
     }
   end
 
-  @spec build(CoAP.Block.t(), nil) :: t()
   def build(%Block{} = description, nil) do
     case {description.more, description.number} do
       {false, 0} ->
@@ -92,10 +87,12 @@ defmodule CoAP.Multipart do
     end
   end
 
-  @spec build(nil, nil) :: t()
   def build(nil, nil), do: %__MODULE__{multipart: false, description: nil, control: nil}
 
-  @spec as_blocks(true, CoAP.Multipart.t()) :: %{block1: CoAP.Block.t(), block2: CoAP.Block.t()}
+  @spec as_blocks(boolean, CoAP.Multipart.t()) :: %{
+          block1: CoAP.Block.t(),
+          block2: CoAP.Block.t()
+        }
   def as_blocks(true, multipart) do
     %{
       block1: multipart.description |> Block.to_tuple(),
@@ -104,8 +101,6 @@ defmodule CoAP.Multipart do
     |> reject_nil_values()
   end
 
-  # TODO: if we get nil here, that's wrong
-  @spec as_blocks(false, CoAP.Multipart.t()) :: %{block1: CoAP.Block.t(), block2: CoAP.Block.t()}
   def as_blocks(false, multipart) do
     %{
       block1: multipart.control |> Block.to_tuple(),

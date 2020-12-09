@@ -8,7 +8,7 @@ defmodule CoAP.Block do
   @type binary_t_large :: <<_::32>>
   @type binary_t :: binary_t_small | binary_t_medium | binary_t_large
 
-  # TODO: if more: false, a size_exponent of 0 should be ignored?
+  # _TODO: if more: false, a size_exponent of 0 should be ignored?
   # otherwise size_exponent of 0 results in size: 16
 
   @doc """
@@ -67,32 +67,27 @@ defmodule CoAP.Block do
     }
   end
 
-  @spec encode(t()) :: binary_t()
+  @spec encode(t() | tuple_t()) :: binary_t()
   def encode(%__MODULE__{} = block), do: encode({block.number, block.more, block.size})
   @spec encode(%{number: integer, more: 0 | 1, size: integer}) :: binary_t()
   def encode(%{number: number, more: more, size: size}), do: encode({number, more, size})
 
-  @spec encode({integer, boolean, 0}) :: binary_t()
   def encode({number, more, 0}) do
     encode(number, if(more, do: 1, else: 0), 0)
   end
 
-  @spec encode({integer, boolean, integer}) :: binary_t()
   def encode({number, more, size}) do
     encode(number, if(more, do: 1, else: 0), trunc(:math.log2(size)) - 4)
   end
 
-  @spec encode(integer, 0 | 1, integer) :: binary_t_small()
   def encode(number, more, size_exponent) when number < 16 do
     <<number::size(4), more::size(1), size_exponent::size(3)>>
   end
 
-  @spec encode(integer, 0 | 1, integer) :: binary_t_medium()
   def encode(number, more, size_exponent) when number < 4096 do
     <<number::size(12), more::size(1), size_exponent::size(3)>>
   end
 
-  @spec encode(integer, 0 | 1, integer) :: binary_t_large()
   def encode(number, more, size_exponent) do
     <<number::size(28), more::size(1), size_exponent::size(3)>>
   end

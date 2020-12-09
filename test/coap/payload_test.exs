@@ -4,8 +4,6 @@ defmodule CoAP.PayloadTest do
 
   alias CoAP.Payload
 
-  # TODO: test next_segment with StreamData
-
   describe "to_binary/1" do
     test "keeps a unique set of blocks by number" do
       segment = <<0, 0, 0, 0, 1>>
