@@ -74,6 +74,49 @@ Simple client usage:
 CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 ```
 
+# Telemetry #
+
+Coap_ex emits telemetry events for data sent and received, block transfers, and other connection-releated events.  To consume them, attach a handler in your app startup like so:
+
+```
+:telemetry.attach_many(
+  "myapp-coap-ex-connection",
+  [
+    [:coap_ex, :connection, :block_sent],
+    [:coap_ex, :connection, :block_received],
+    [:coap_ex, :connection, :connection_started],
+    [:coap_ex, :connection, :connection_ended],
+    [:coap_ex, :connection, :data_sent],
+    [:coap_ex, :connection, :data_received],
+    [:coap_ex, :connection, :re_tried],
+    [:coap_ex, :connection, :timed_out]
+  ],
+  &MyHandler.handle_event/4,
+  nil
+)
+```
+
+Each connection can be tagged when the connection is created, and this tag will be passed to the telemetry handler.  This makes it possible to monitor a single connection among many connections. The tag can be any value.
+
+To tag a client connection, pass a tag in the request options:
+
+```
+CoAP.Client.request(
+  :con,
+  method,
+  url,
+  request_payload,
+  %{retries: retries, timeout: @wait_timeout, ack_timeout: timeout, tag: tag}
+)
+ ```
+ 
+ To tag a server connection if using Phoenix:
+ 
+ ```
+ # in phoenix controller
+ CoAP.Phoenix.Conn.tag(conn, tag)
+ ```
+
 # TODO:
 
 * [x] handle multiple parts for some headers, like "Uri-Path"
