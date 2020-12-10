@@ -177,6 +177,7 @@ defmodule CoAP.Connection do
 
     Wrap the adapter and the client in a handler
   """
+  @impl GenServer
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer, config]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
@@ -211,6 +212,7 @@ defmodule CoAP.Connection do
      |> State.add_options(options)}
   end
 
+  @impl GenServer
   def handle_info({:receive, %Message{} = message}, state) do
     :telemetry.execute(
       [:coap_ex, :connection, :data_received],
@@ -244,6 +246,12 @@ defmodule CoAP.Connection do
   def handle_info({:plug_conn, :sent}, state), do: {:noreply, state}
 
   def handle_info({:tag, tag}, state), do: {:noreply, %{state | tag: tag}}
+
+  @impl GenServer
+  def terminate(_reason, state) do
+    send(state.handler, :connection_end)
+    :ok
+  end
 
   # _TODO: connection timeout, set to original state?
 
