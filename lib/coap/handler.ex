@@ -7,6 +7,8 @@ defmodule CoAP.Handler do
   """
   use GenServer
 
+  defstruct adapter: nil, endpoint: nil, connection: nil, ref: nil
+
   def child_spec(args) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [args]}, restart: :transient}
   end
@@ -17,27 +19,29 @@ defmodule CoAP.Handler do
   end
 
   @impl GenServer
-  def init([adapter, endpoint]) do
-    {:ok, {adapter, endpoint}}
+  def init([adapter, endpoint, connection]) do
+    ref = Process.monitor(connection)
+    s = %__MODULE__{adapter: adapter, endpoint: endpoint, connection: connection, ref: ref}
+    {:ok, s}
   end
 
   @impl GenServer
-  def handle_info({:request, message, peer, connection}, {adapter, endpoint} = state) do
-    adapter.request(message, {endpoint, peer}, connection)
-    {:noreply, state}
+  def handle_info({:request, message, peer}, s) do
+    s.adapter.request(message, {s.endpoint, peer}, s.connection)
+    {:noreply, s}
   end
 
-  def handle_info({:response, message, peer, connection}, {adapter, endpoint} = state) do
-    adapter.response(message, {endpoint, peer}, connection)
-    {:noreply, state}
+  def handle_info({:response, message, peer}, s) do
+    s.adapter.response(message, {s.endpoint, peer}, s.connection)
+    {:noreply, s}
   end
 
-  def handle_info({:error, reason}, {adapter, endpoint} = state) do
-    adapter.error({endpoint, %{reason: reason}})
-    {:noreply, state}
+  def handle_info({:error, reason}, s) do
+    s.adapter.error({s.endpoint, %{reason: reason}})
+    {:noreply, s}
   end
 
-  def handle_info(:connection_end, state) do
-    {:stop, :normal, state}
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %__MODULE__{ref: ref} = s) do
+    {:stop, :normal, s}
   end
 end

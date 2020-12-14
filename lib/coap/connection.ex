@@ -247,12 +247,6 @@ defmodule CoAP.Connection do
 
   def handle_info({:tag, tag}, state), do: {:noreply, %{state | tag: tag}}
 
-  @impl GenServer
-  def terminate(_reason, state) do
-    send(state.handler, :connection_end)
-    :ok
-  end
-
   # _TODO: connection timeout, set to original state?
 
   # def handle_info(:retry, state)
@@ -620,7 +614,7 @@ defmodule CoAP.Connection do
 
   # REQUEST ====================================================================
   defp handle(message, handler, peer) do
-    send(handler, {direction(message), message, peer, self()})
+    send(handler, {direction(message), message, peer})
   end
 
   # RESPOND ====================================================================
@@ -684,7 +678,7 @@ defmodule CoAP.Connection do
       CoAP.HandlerSupervisor,
       {
         CoAP.Handler,
-        [adapter, endpoint]
+        [adapter, endpoint, self()]
       }
     )
   end
