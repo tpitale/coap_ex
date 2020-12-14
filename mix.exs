@@ -25,7 +25,7 @@ defmodule Coap.MixProject do
     [
       # Dev
       {:dialyxir, "~> 1.0.0", only: :dev, runtime: false},
-      {:credo, "~> 1.5"},
+      {:credo, "~> 1.5", only: :dev},
       {:stream_data, "~> 0.1", only: :test},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false},
 

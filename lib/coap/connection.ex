@@ -177,6 +177,7 @@ defmodule CoAP.Connection do
 
     Wrap the adapter and the client in a handler
   """
+  @impl GenServer
   def init([server, {adapter, endpoint}, {ip, port, token} = _peer, config]) do
     {:ok, handler} = start_handler(adapter, endpoint)
 
@@ -211,6 +212,7 @@ defmodule CoAP.Connection do
      |> State.add_options(options)}
   end
 
+  @impl GenServer
   def handle_info({:receive, %Message{} = message}, state) do
     :telemetry.execute(
       [:coap_ex, :connection, :data_received],
@@ -612,7 +614,7 @@ defmodule CoAP.Connection do
 
   # REQUEST ====================================================================
   defp handle(message, handler, peer) do
-    send(handler, {direction(message), message, peer, self()})
+    send(handler, {direction(message), message, peer})
   end
 
   # RESPOND ====================================================================
@@ -676,7 +678,7 @@ defmodule CoAP.Connection do
       CoAP.HandlerSupervisor,
       {
         CoAP.Handler,
-        [adapter, endpoint]
+        [adapter, endpoint, self()]
       }
     )
   end
