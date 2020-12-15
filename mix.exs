@@ -30,6 +30,7 @@ defmodule Coap.MixProject do
       {:ex_doc, "~> 0.23", only: :dev, runtime: false},
 
       # Runtime
+      {:gen_state_machine, "~> 3.0"},
       {:plug, "~> 1.11"},
       {:telemetry, "~> 0.4.0"}
     ]
