@@ -4,9 +4,6 @@ defmodule CoAP.Transport do
   """
   use GenStateMachine
 
-  import CoAP.Util.BinaryFormatter, only: [to_hex: 1]
-  import Logger, only: [debug: 1]
-
   alias CoAP.Message
 
   @ack_timeout 2_000
@@ -14,32 +11,44 @@ defmodule CoAP.Transport do
   @max_retransmit 4
 
   defstruct socket: nil,
+            socket_ref: nil,
             peer: nil,
-            peer_ip: nil,
             retries: 0,
             max_retransmit: @max_retransmit,
             retransmit_timeout: 0,
             ack_timeout: @ack_timeout,
-            ack_random_factor: @ack_random_factor
+            ack_random_factor: @ack_random_factor,
+            max_transmit_span: 0,
+            transport_opts: nil
 
   @type t :: %__MODULE__{
-          socket: :gen_udp.socket() | nil,
+          socket: pid() | nil,
+          socket_ref: reference() | nil,
           peer: %URI{} | nil,
-          peer_ip: :inet.ip_address(),
           retries: integer(),
           max_retransmit: integer(),
           retransmit_timeout: integer(),
           ack_timeout: integer(),
-          ack_random_factor: integer() | float()
+          ack_random_factor: integer() | float(),
+          max_transmit_span: integer(),
+          transport_opts: any()
         }
 
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
           {:peer, {host(), integer()}}
+          | {:transport_opts, any()}
           | {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
   @type args() :: arg()
+
+  @type peer() :: URI.t()
+  @type transport() :: pid()
+  @type transport_opts() :: any()
+
+  # Socket implementation is not linked to transport process, but monitored
+  @callback start({peer(), transport(), transport_opts()}) :: GenServer.on_start()
 
   @doc false
   @spec start_link(args()) :: GenStateMachine.on_start()
@@ -54,9 +63,9 @@ defmodule CoAP.Transport do
     with args <- Enum.into(args, %{}),
          {:ok, s} <- init_state(args),
          {:ok, uri} <- get_peer(args),
-         {:ok, peer_ip} <- resolve_ip(uri),
-         {:ok, socket} <- open_socket(uri) do
-      {:ok, :closed, %{s | peer: uri, peer_ip: peer_ip, socket: socket}}
+         {:ok, {socket, ref}} <- open_socket({uri, s.transport_opts}) do
+      s = %{s | peer: uri, socket: socket, socket_ref: ref}
+      {:ok, :closed, s, timeouts(s)}
     else
       {:error, reason} ->
         {:stop, reason}
@@ -64,65 +73,92 @@ defmodule CoAP.Transport do
   end
 
   @impl GenStateMachine
+  # STATE: _any
+  def handle_event(:info, {:DOWN, ref, :process, _socket, _reason}, _, %{socket_ref: ref} = s) do
+    case open_socket({s.peer, s.transport_opts}) do
+      {:ok, {socket, ref}} ->
+        {:keep_state, %{s | socket: socket, socket_ref: ref}}
+
+      {:error, reason} ->
+        {:stop, reason, %{s | socket: nil}}
+    end
+  end
+
+  def handle_event({:timeout, :max_transmit_span}, :close, _, s) do
+    {:stop, :max_transmit_span, s}
+  end
+
+  # STATE: :closed
   def handle_event(:info, {:reliable_send, message, tag}, :closed, s) do
-    data = Message.encode(message)
-    :ok = do_send_con(data, message, tag, s)
-
-    {:next_state, :reliable_tx, s,
-     {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag, data}}}
+    send(s.socket, {:send, message, tag})
+    actions = timeouts(s, {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}})
+    {:next_state, {:reliable_tx, message.message_id}, s, actions}
   end
 
-  def handle_event(_type, _content, :closed, _state) do
-    :keep_state_and_data
+  # STATE: {:reliable_tx, message_id}
+  def handle_event(:info, {:recv, %Message{type: :reset, message_id: id}, _from}, {:reliable_tx, id}, s) do
+    {:stop, :reset, s}
   end
 
-  def handle_event(:state_timeout, {:reliable_send, message, tag, data} = event, :reliable_tx, s) do
-    :ok = do_send_con(data, message, tag, s)
-    s = %{s | retransmit_timeout: s.retransmit_timeout * 2}
-    {:next_state, :reliable_tx, s, {:state_timeout, s.retransmit_timeout, event}}
+  def handle_event(
+        :state_timeout,
+        {:reliable_send, _, _, _},
+        {:reliable_tx, _},
+        %{
+          retries: max_retries,
+          max_retries: max_retries
+        } = s
+      ) do
+    # Should we explicitly send RR_EVT(fail), or RR layer monitor would be
+    # enough ?
+    {:stop, :timeout, s}
   end
 
-  def handle_event(_type, _content, :reliable_tx, _state) do
-    :keep_state_and_data
+  def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
+    send(s.socket, {:send, message, tag})
+    s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
+    {:keep_state, s, {:state_timeout, s.retransmit_timeout, event}}
   end
 
+  # STATE: :ack_pending
   def handle_event(_type, _content, :ack_pending, _state) do
     :keep_state_and_data
+  end
+
+  @impl GenStateMachine
+  def terminate(_reason, _state, %{socket: nil}),
+    do: :ok
+
+  def terminate(_reason, _state, s) do
+    send(s.socket, :close)
   end
 
   ###
   ### Priv
   ###
-  defp do_send_con(data, message, tag, s) do
-    debug("CoAP socket sending raw data #{to_hex(data)} to #{s.peer}")
-
-    :telemetry.execute(
-      [:coap_ex, :connection, :data_sent],
-      %{size: byte_size(data)},
-      %{
-        host: s.peer.host,
-        port: s.peer.port,
-        message_id: message.message_id,
-        token: message.token,
-        tag: tag
-      }
-    )
-
-    :ok = :gen_udp.send(s.socket, s.peer_ip, s.peer.port, data)
+  defp timeouts(s, actions \\ []) do
+    [{{:timeout, :max_transmit_span}, s.max_transmit_span, :close} | List.wrap(actions)]
   end
 
   defp init_state(args) do
     options =
       args
-      |> Map.take([:ack_timeout, :ack_random_factor, :max_retransmit])
+      |> Map.take([:ack_timeout, :ack_random_factor, :max_retransmit, :transport_opts])
 
+    # Merge options with default ones, if not nil
     s =
       Map.merge(%__MODULE__{}, options, fn
         _key, v1, nil -> v1
         _key, _v1, v2 -> v2
       end)
 
-    s = %{s | retransmit_timeout: round(s.ack_timeout * s.ack_random_factor)}
+    # Add some computed values
+    s = %{
+      s
+      | retransmit_timeout: round(s.ack_timeout * s.ack_random_factor),
+        max_transmit_span:
+          s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor
+    }
 
     {:ok, s}
   end
@@ -140,21 +176,17 @@ defmodule CoAP.Transport do
   defp get_peer(args),
     do: {:error, {:badarg, args}}
 
-  defp resolve_ip(%URI{host: host}) do
-    '#{host}'
-    |> :inet.getaddr(:inet)
-    |> case do
-      {:ok, ip} -> {:ok, ip}
-      {:error, reason} -> {:error, {:invalid_host, reason}}
-    end
-  end
+  defp open_socket({%URI{scheme: "coap"} = uri, opts}),
+    do: open_socket(CoAP.Transport.UDP, uri, opts)
 
-  defp open_socket(%URI{scheme: "coap", port: port}) do
-    port
-    |> :gen_udp.open([:binary, {:active, true}, {:reuseaddr, true}])
-    |> case do
-      {:ok, socket} -> {:ok, socket}
-      {:error, reason} -> {:error, reason}
+  defp open_socket(impl, uri, opts) do
+    case impl.start({uri, self(), opts}) do
+      {:ok, pid} ->
+        ref = Process.monitor(pid)
+        {:ok, {pid, ref}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end
