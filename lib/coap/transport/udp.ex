@@ -32,7 +32,7 @@ defmodule CoAP.Transport.UDP do
     with {:ok, host_ip} <- resolve_ip(host),
          {:ok, pid} <-
            GenServer.start(__MODULE__, {host_ip, port, transport},
-             name: {:global, {host_ip, port}}
+             name: {:global, {__MODULE__, host_ip, port}}
            ) do
       {:ok, pid}
     else

@@ -1,6 +1,43 @@
 defmodule CoAP.Transport do
   @moduledoc """
   Implements CoAP message layer
+
+  # Message layer FSM
+
+  See [CoAP Implementation Guidance (section
+  2.5)](https://tools.ietf.org/id/draft-ietf-lwig-coap-05.html#message-layer)
+
+  ```
+  +-----------+ <-------M_CMD(reliable_send)-----+
+  |           |            / TX(con)              \\
+  |           |                                +--------------+
+  |           | ---TIMEOUT(RETX_WINDOW)------> |              |
+  |RELIABLE_TX|     / RR_EVT(fail)             |              |
+  |           | ---------------------RX_RST--> |              | <----+
+  |           |               / RR_EVT(fail)   |              |      |
+  +-----------+ ----M_CMD(cancel)------------> |    CLOSED    |      |
+   ^  |  |  \\  \\                               |              | --+  |
+   |  |  |   \\  +-------------------RX_ACK---> |              |   |  |
+   +*1+  |    \\                / RR_EVT(rx)    |              |   |  |
+         |     +----RX_NON-------------------> +--------------+   |  |
+         |       / RR_EVT(rx)                  ^ ^ ^ ^  | | | |   |  |
+         |                                     | | | |  | | | |   |  |
+         |                                     | | | +*2+ | | |   |  |
+         |                                     | | +--*3--+ | |   |  |
+         |                                     | +----*4----+ |   |  |
+         |                                     +------*5------+   |  |
+         |                +---------------+                       |  |
+         |                |  ACK_PENDING  | <--RX_CON-------------+  |
+         +----RX_CON----> |               |  / RR_EVT(rx)            |
+           / RR_EVT(rx)   +---------------+ ---------M_CMD(accept)---+
+                                                       / TX(ack)
+
+  *1: TIMEOUT(RETX_TIMEOUT) / TX(con)
+  *2: M_CMD(unreliable_send) / TX(non)
+  *3: RX_NON / RR_EVT(rx)
+  *4: RX_RST / REMOVE_OBSERVER
+  *5: RX_ACK
+  ```
   """
   use GenStateMachine
 
@@ -10,6 +47,11 @@ defmodule CoAP.Transport do
   @ack_random_factor 1.5
   @max_retransmit 4
 
+  @type peer() :: URI.t()
+  @type transport() :: pid()
+  @type transport_opts() :: any()
+  @type socket_init() ::
+          ({peer(), transport(), transport_opts()} -> {:ok, pid()} | {:error, term()})
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
           {:peer, {host(), integer()}}
@@ -17,13 +59,8 @@ defmodule CoAP.Transport do
           | {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
+          | {:socket_init, socket_init()}
   @type args() :: arg()
-
-  @type peer() :: URI.t()
-  @type transport() :: pid()
-  @type transport_opts() :: any()
-  @type socket_init() ::
-          ({peer(), transport(), transport_opts()} -> {:ok, pid()} | {:error, term()})
 
   defstruct socket: nil,
             socket_ref: nil,
@@ -70,7 +107,7 @@ defmodule CoAP.Transport do
     |> init_state(args)
     |> when_valid?(&cast_peer(&1, args))
     |> when_valid?(&cast_socket_init/1)
-    |> when_valid?(&open_socket(&1))
+    |> when_valid?(&open_socket/1)
     |> case do
       %__MODULE__{error: nil} = s ->
         {:ok, :closed, s, timeouts(s)}
@@ -99,6 +136,9 @@ defmodule CoAP.Transport do
   end
 
   # STATE: :closed
+  def handle_event(:info, {:reliable_send, message}, :closed, s),
+    do: handle_event(:info, {:reliable_send, message, nil}, :closed, s)
+
   def handle_event(:info, {:reliable_send, message, tag}, :closed, s) do
     send(s.socket, {:send, message, tag})
     actions = timeouts(s, {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}})
@@ -106,8 +146,15 @@ defmodule CoAP.Transport do
   end
 
   # STATE: {:reliable_tx, message_id}
+  def handle_event(:info, {:reliable_send, m}, {:reliable_tx, id}, s),
+    do: handle_event(:info, {:reliable_send, m, nil}, {:reliable_tx, id}, s)
+
+  def handle_event(:info, {:reliable_send, _message, _tag}, {:reliable_tx, _id}, s) do
+    {:keep_state_and_data, timeouts(s, :postpone)}
+  end
+
   def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
-    {:stop, :cancel, s}
+    {:next_state, :closed, s, timeouts(s)}
   end
 
   def handle_event(
@@ -134,7 +181,7 @@ defmodule CoAP.Transport do
   def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
     send(s.socket, {:send, message, tag})
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
-    {:keep_state, s, timeouts({:state_timeout, s.retransmit_timeout, event})}
+    {:keep_state, s, timeouts(s, {:state_timeout, s.retransmit_timeout, event})}
   end
 
   # STATE: :ack_pending
@@ -159,6 +206,8 @@ defmodule CoAP.Transport do
 
   defp when_valid?(%__MODULE__{error: nil} = state, fun),
     do: fun.(state)
+
+  defp when_valid?(s, _), do: s
 
   defp init_state(s, args) do
     options =
@@ -190,11 +239,17 @@ defmodule CoAP.Transport do
     %{s | peer: uri}
   end
 
-  defp cast_peer(s, args),
-    do: %{s | error: {:badarg, args}}
+  defp cast_peer(s, _args),
+    do: s
 
-  defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s) do
-    %{s | socket_init: &CoAP.Transport.UDP.start/1}
+  defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
+    do: %{s | socket_init: &CoAP.Transport.UDP.start/1}
+
+  defp cast_socket_init(%{socket_init: init} = s) when is_function(init, 1),
+    do: s
+
+  defp cast_socket_init(s) do
+    %{s | error: {:badarg, "Missing :peer or :socket_init"}}
   end
 
   defp open_socket(%{socket_init: init, peer: uri, transport_opts: opts} = s) do
@@ -216,7 +271,7 @@ defmodule CoAP.Transport do
     %{
       s
       | max_transmit_span:
-          s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor
+          round(s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor)
     }
   end
 end
