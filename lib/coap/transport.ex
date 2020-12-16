@@ -47,6 +47,7 @@ defmodule CoAP.Transport do
   @ack_random_factor 1.5
   @max_retransmit 4
 
+  @type client() :: pid() | term()
   @type peer() :: URI.t()
   @type transport() :: pid()
   @type transport_opts() :: any()
@@ -62,7 +63,25 @@ defmodule CoAP.Transport do
           | {:socket_init, socket_init()}
   @type args() :: arg()
 
-  defstruct socket: nil,
+  @typedoc """
+  * `:cancel`: transport received a cancel event
+  * `:fail`: transport failed, due to reset or timeout
+  * `:rx`: transport received an ACK
+  """
+  @type client_message_content :: :cancel | :fail | :rx
+
+  @typedoc """
+  Messages from Transport to Request/Receive layer
+  """
+  @type client_message :: {pid(), client_message_content()}
+
+  @typedoc """
+  Messages from Socket to Transport layer
+  """
+  @type socket_message :: {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}}
+
+  defstruct client: nil,
+            socket: nil,
             socket_ref: nil,
             socket_init: nil,
             peer: nil,
@@ -71,11 +90,11 @@ defmodule CoAP.Transport do
             retransmit_timeout: 0,
             ack_timeout: @ack_timeout,
             ack_random_factor: @ack_random_factor,
-            max_transmit_span: 0,
             transport_opts: nil,
             error: nil
 
   @type t :: %__MODULE__{
+          client: client() | nil,
           socket: pid() | nil,
           socket_ref: reference() | nil,
           socket_init: socket_init() | nil,
@@ -85,7 +104,6 @@ defmodule CoAP.Transport do
           retransmit_timeout: integer(),
           ack_timeout: integer(),
           ack_random_factor: integer() | float(),
-          max_transmit_span: integer(),
           transport_opts: any(),
           error: term() | nil
         }
@@ -94,23 +112,29 @@ defmodule CoAP.Transport do
   @callback start({peer(), transport(), transport_opts()}) :: GenServer.on_start()
 
   @doc false
-  @spec start_link(args()) :: GenStateMachine.on_start()
-  def start_link(args) do
-    GenStateMachine.start_link(__MODULE__, args)
+  @spec start_link(client(), args()) :: GenStateMachine.on_start()
+  def start_link(client, args) do
+    GenStateMachine.start_link(__MODULE__, {client, args})
+  end
+
+  @doc false
+  @spec start(client(), args()) :: GenStateMachine.on_start()
+  def start(client, args) do
+    GenStateMachine.start(__MODULE__, {client, args})
   end
 
   @impl GenStateMachine
-  def init(args) do
+  def init({client, args}) do
     args = Enum.into(args, %{})
 
-    %__MODULE__{}
+    %__MODULE__{client: client}
     |> init_state(args)
     |> when_valid?(&cast_peer(&1, args))
     |> when_valid?(&cast_socket_init/1)
     |> when_valid?(&open_socket/1)
     |> case do
       %__MODULE__{error: nil} = s ->
-        {:ok, :closed, s, timeouts(s)}
+        {:ok, :closed, s}
 
       %__MODULE__{error: reason} ->
         {:stop, reason}
@@ -119,20 +143,25 @@ defmodule CoAP.Transport do
 
   @impl GenStateMachine
   # STATE: _any
-  def handle_event(:info, {:DOWN, ref, :process, _socket, _reason}, _, %{socket_ref: ref} = s) do
+  def handle_event(:info, :stop, _, s),
+    # Mostly for debug/test
+    do: {:stop, :normal, s}
+
+  def handle_event(
+        :info,
+        {:DOWN, ref, :process, _socket, _reason},
+        _,
+        %__MODULE__{socket_ref: ref} = s
+      ) do
     s
     |> open_socket()
     |> case do
       %__MODULE__{error: nil} ->
-        {:keep_state, s, timeouts(s)}
+        {:keep_state, s}
 
       %__MODULE__{error: reason} ->
         {:stop, {:socket, reason}, %{s | socket: nil}}
     end
-  end
-
-  def handle_event({:timeout, :max_transmit_span}, :close, _, s) do
-    {:stop, :max_transmit_span, s}
   end
 
   # STATE: :closed
@@ -141,20 +170,32 @@ defmodule CoAP.Transport do
 
   def handle_event(:info, {:reliable_send, message, tag}, :closed, s) do
     send(s.socket, {:send, message, tag})
-    actions = timeouts(s, {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}})
-    {:next_state, {:reliable_tx, message.message_id}, s, actions}
+
+    {:next_state, {:reliable_tx, message.message_id}, s,
+     {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}}}
   end
 
   # STATE: {:reliable_tx, message_id}
   def handle_event(:info, {:reliable_send, m}, {:reliable_tx, id}, s),
     do: handle_event(:info, {:reliable_send, m, nil}, {:reliable_tx, id}, s)
 
-  def handle_event(:info, {:reliable_send, _message, _tag}, {:reliable_tx, _id}, s) do
-    {:keep_state_and_data, timeouts(s, :postpone)}
+  def handle_event(:info, {:reliable_send, _message, _tag}, {:reliable_tx, _id}, _s) do
+    {:keep_state_and_data, :postpone}
   end
 
   def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
-    {:next_state, :closed, s, timeouts(s)}
+    send(s.client, {self(), :cancel})
+    {:stop, :normal, s}
+  end
+
+  def handle_event(
+        :info,
+        {:recv, %Message{type: :ack, message_id: id}, _from},
+        {:reliable_tx, id},
+        s
+      ) do
+    send(s.client, {self(), :rx})
+    {:stop, :normal, s}
   end
 
   def handle_event(
@@ -163,30 +204,32 @@ defmodule CoAP.Transport do
         {:reliable_tx, id},
         s
       ) do
-    {:stop, :fail, s}
+    send(s.client, {self(), :fail})
+    {:stop, :normal, s}
   end
 
   def handle_event(
         :state_timeout,
-        {:reliable_send, _, _, _},
+        {:reliable_send, _, _},
         {:reliable_tx, _},
-        %{
-          retries: max_retries,
-          max_retries: max_retries
+        %__MODULE__{
+          retries: max_retransmit,
+          max_retransmit: max_retransmit
         } = s
       ) do
-    {:stop, :fail, s}
+    send(s.client, {self(), :fail})
+    {:stop, :normal, s}
   end
 
   def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
     send(s.socket, {:send, message, tag})
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
-    {:keep_state, s, timeouts(s, {:state_timeout, s.retransmit_timeout, event})}
+    {:keep_state, s, {:state_timeout, s.retransmit_timeout, event}}
   end
 
   # STATE: :ack_pending
-  def handle_event(_type, _content, :ack_pending, s) do
-    {:keep_state_and_data, timeouts(s)}
+  def handle_event(_type, _content, :ack_pending, _s) do
+    :keep_state_and_data
   end
 
   @impl GenStateMachine
@@ -200,10 +243,6 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp timeouts(s, actions \\ []) do
-    [{{:timeout, :max_transmit_span}, s.max_transmit_span, :close} | List.wrap(actions)]
-  end
-
   defp when_valid?(%__MODULE__{error: nil} = state, fun),
     do: fun.(state)
 
@@ -226,7 +265,7 @@ defmodule CoAP.Transport do
       _key, _v1, v2 -> v2
     end)
     |> fill_retransmit_timeout()
-    |> fill_max_transmit_span()
+    |> validate_ack_random_factor()
   end
 
   defp cast_peer(s, %{peer: {{a, b, c, d}, port}}) do
@@ -264,14 +303,22 @@ defmodule CoAP.Transport do
   end
 
   defp fill_retransmit_timeout(s) do
-    %{s | retransmit_timeout: round(s.ack_timeout * s.ack_random_factor)}
+    %{s | retransmit_timeout: __retransmit_timeout__(s.ack_timeout, s.ack_random_factor)}
   end
 
-  defp fill_max_transmit_span(s) do
-    %{
-      s
-      | max_transmit_span:
-          round(s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor)
-    }
+  defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
+       when is_float(factor) and factor >= 1.0,
+       do: s
+
+  defp validate_ack_random_factor(s),
+    do: %{s | error: {:badarg, :ack_random_factor, s.ack_random_factor}}
+
+  def __max_transmit_wait__(ack_timeout, max_retransmit, ack_random_factor \\ @ack_random_factor) do
+    round(ack_timeout * (:math.pow(2, max_retransmit + 1) - 1) * ack_random_factor)
+  end
+
+  def __retransmit_timeout__(ack_timeout, ack_random_factor \\ @ack_random_factor) do
+    random = :rand.uniform() * ack_timeout * (ack_random_factor - 1)
+    round(ack_timeout + random)
   end
 end
