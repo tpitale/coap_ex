@@ -100,7 +100,12 @@ defmodule CoAP.Transport do
     {:stop, :cancel, s}
   end
 
-  def handle_event(:info, {:recv, %Message{type: :reset, message_id: id}, _from}, {:reliable_tx, id}, s) do
+  def handle_event(
+        :info,
+        {:recv, %Message{type: :reset, message_id: id}, _from},
+        {:reliable_tx, id},
+        s
+      ) do
     {:stop, :fail, s}
   end
 
@@ -155,12 +160,10 @@ defmodule CoAP.Transport do
       end)
 
     # Add some computed values
-    s = %{
+    s =
       s
-      | retransmit_timeout: round(s.ack_timeout * s.ack_random_factor),
-        max_transmit_span:
-          s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor
-    }
+      |> fill_retransmit_timeout()
+      |> fill_max_transmit_span()
 
     {:ok, s}
   end
@@ -190,5 +193,17 @@ defmodule CoAP.Transport do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp fill_retransmit_timeout(s) do
+    %{s | retransmit_timeout: round(s.ack_timeout * s.ack_random_factor)}
+  end
+
+  defp fill_max_transmit_span(s) do
+    %{
+      s
+      | max_transmit_span:
+          s.ack_timeout * (:math.pow(2, s.max_retransmit) - 1) * s.ack_random_factor
+    }
   end
 end
