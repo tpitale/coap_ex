@@ -80,7 +80,7 @@ defmodule CoAP.Transport do
         {:keep_state, %{s | socket: socket, socket_ref: ref}}
 
       {:error, reason} ->
-        {:stop, reason, %{s | socket: nil}}
+        {:stop, {:socket, reason}, %{s | socket: nil}}
     end
   end
 
@@ -96,8 +96,12 @@ defmodule CoAP.Transport do
   end
 
   # STATE: {:reliable_tx, message_id}
+  def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
+    {:stop, :cancel, s}
+  end
+
   def handle_event(:info, {:recv, %Message{type: :reset, message_id: id}, _from}, {:reliable_tx, id}, s) do
-    {:stop, :reset, s}
+    {:stop, :fail, s}
   end
 
   def handle_event(
@@ -109,9 +113,7 @@ defmodule CoAP.Transport do
           max_retries: max_retries
         } = s
       ) do
-    # Should we explicitly send RR_EVT(fail), or RR layer monitor would be
-    # enough ?
-    {:stop, :timeout, s}
+    {:stop, :fail, s}
   end
 
   def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
