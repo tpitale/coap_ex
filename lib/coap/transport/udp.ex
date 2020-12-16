@@ -44,10 +44,11 @@ defmodule CoAP.Transport.UDP do
   @impl GenServer
   def init({host_ip, port, transport}) do
     # Open UDP socket for sending request, as 'client'
-    with {:ok, socket} <- :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}]) do
-      {:ok, %__MODULE__{socket: socket, host: host_ip, port: port, transport: transport},
-       @timeout}
-    else
+    case :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}]) do
+      {:ok, socket} ->
+        {:ok, %__MODULE__{socket: socket, host: host_ip, port: port, transport: transport},
+         @timeout}
+
       {:error, reason} ->
         {:error, reason}
     end
