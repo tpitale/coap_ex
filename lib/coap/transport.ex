@@ -172,24 +172,24 @@ defmodule CoAP.Transport do
 
   # STATE: :closed
   def handle_event(:info, %Message{type: :con, message_id: mid} = m, :closed, s) do
-    send(s.socket, {:send, m})
+    tx(s, m)
     {:next_state, {:reliable_tx, mid}, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
   def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, :closed, s) do
-    send(s.client, {self(), {:rr_rx, m}})
+    rr_evt(s, {:rr_rx, m})
     # No timeout, but RR layer should take care of ack'ing message in a
     # reasonble time
     {:next_state, {:ack_pending, mid}, s}
   end
 
   def handle_event(:info, %Message{type: :non} = m, :closed, s) do
-    send(s.socket, {:send, m})
+    tx(s, m)
     :keep_state_and_data
   end
 
   def handle_event(:info, {:recv, %Message{type: :non} = m}, :closed, s) do
-    send(s.client, {self(), {:rr_rx, m}})
+    rr_evt(s, {:rr_rx, m})
     :keep_state_and_data
   end
 
@@ -201,12 +201,12 @@ defmodule CoAP.Transport do
     do: {:next_state, :closed, s}
 
   def handle_event(:info, {:recv, %Message{type: :reset}}, {:reliable_tx, _}, s) do
-    send(s.client, {self(), :rr_fail})
+    rr_evt(s, :rr_fail)
     {:next_state, :closed, s}
   end
 
   def handle_event(:info, {:recv, %Message{message_id: mid, type: :ack} = m, _from}, {:reliable_tx, mid}, s) do
-    send(s.client, {self(), {:rr_rx, m}})
+    rr_evt(s, {:rr_rx, m})
     {:next_state, :closed, s}
   end
 
@@ -220,7 +220,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    send(s.client, {self(), {:rr_rx, m}})
+    rr_evt(s, {:rr_rx, m})
     {:next_state, :closed, s}
   end
 
@@ -230,7 +230,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    send(s.client, {self(), :rr_fail})
+    rr_evt(s, :rr_fail)
     {:next_state, :closed, s}
   end
 
@@ -243,19 +243,19 @@ defmodule CoAP.Transport do
           max_retransmit: max_retransmit
         } = s
       ) do
-    send(s.client, {self(), :rr_fail})
+    rr_evt(s, :rr_fail)
     {:next_state, :closed, s}
   end
 
   def handle_event(:state_timeout, %Message{type: :con} = m, {:reliable_tx, _}, s) do
-    send(s.socket, {:send, m})
+    tx(s, m)
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
     {:keep_state, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
   # STATE: :ack_pending
   def handle_event(:info, %Message{type: :ack, message_id: mid} = m, {:ack_pending, mid}, s) do
-    send(s.socket, {:send, m})
+    tx(s, m)
     {:next_state, :closed, s}
   end
 
@@ -350,5 +350,13 @@ defmodule CoAP.Transport do
   def __retransmit_timeout__(ack_timeout, ack_random_factor \\ @ack_random_factor) do
     random = :rand.uniform() * ack_timeout * (ack_random_factor - 1)
     round(ack_timeout + random)
+  end
+
+  defp tx(%__MODULE__{socket: socket}, m) do
+    send(socket, {:send, m})
+  end
+
+  defp rr_evt(%__MODULE__{client: client}, evt) do
+    send(client, {self(), evt})
   end
 end
