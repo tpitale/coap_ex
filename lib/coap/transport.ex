@@ -149,7 +149,11 @@ defmodule CoAP.Transport do
   def handle_event({:call, from}, :state_name, state_name, _s),
     do: {:keep_state_and_data, {:reply, from, state_name}}
 
+  #
   # STATE: _any
+  #
+
+  # Socket closed
   def handle_event(
         :info,
         {:DOWN, ref, :process, _socket, _reason},
@@ -170,12 +174,23 @@ defmodule CoAP.Transport do
   def handle_event(:info, {:DOWN, _, _, _, _}, _, _s),
     do: :keep_state_and_data
 
+  #
   # STATE: :closed
+  #
+
+  # M_CMD[reliable_send]
   def handle_event(:info, %Message{type: :con, message_id: mid} = m, :closed, s) do
     tx(s, m)
     {:next_state, {:reliable_tx, mid}, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
+  # M_CMD[unreliable_send]
+  def handle_event(:info, %Message{type: :non} = m, :closed, s) do
+    tx(s, m)
+    :keep_state_and_data
+  end
+
+  # RX_CON
   def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, :closed, s) do
     rr_evt(s, {:rr_rx, m})
     # No timeout, but RR layer should take care of ack'ing message in a
@@ -183,37 +198,36 @@ defmodule CoAP.Transport do
     {:next_state, {:ack_pending, mid}, s}
   end
 
-  def handle_event(:info, %Message{type: :non} = m, :closed, s) do
-    tx(s, m)
-    :keep_state_and_data
-  end
-
+  # RX_NON
   def handle_event(:info, {:recv, %Message{type: :non} = m}, :closed, s) do
     rr_evt(s, {:rr_rx, m})
     :keep_state_and_data
   end
 
+  # RX_ACK
   def handle_event(:info, {:recv, %Message{type: :ack}}, :closed, _s),
     do: :keep_state_and_data
 
+  #
   # STATE: {:reliable_tx, message_id}
+  #
+
+  # M_CMD[cancel]
   def handle_event(:info, :cancel, {:reliable_tx, _}, s),
     do: {:next_state, :closed, s}
 
-  def handle_event(:info, {:recv, %Message{type: :reset}}, {:reliable_tx, _}, s) do
-    rr_evt(s, :rr_fail)
-    {:next_state, :closed, s}
-  end
-
-  def handle_event(:info, {:recv, %Message{message_id: mid, type: :ack} = m, _from}, {:reliable_tx, mid}, s) do
-    rr_evt(s, {:rr_rx, m})
-    {:next_state, :closed, s}
-  end
-
+  # M_CMD[reliable_send] - non matching
   def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
     {:keep_state_and_data, :postpone}
   end
 
+  # RX_RST
+  def handle_event(:info, {:recv, %Message{type: :reset, message_id: mid}}, {:reliable_tx, mid}, s) do
+    rr_evt(s, :rr_fail)
+    {:next_state, :closed, s}
+  end
+
+  # RX_ACK
   def handle_event(
         :info,
         {:recv, %Message{type: :ack, message_id: mid} = m, _from},
@@ -224,6 +238,7 @@ defmodule CoAP.Transport do
     {:next_state, :closed, s}
   end
 
+  # RX_RST
   def handle_event(
         :info,
         {:recv, %Message{type: :reset, message_id: mid}, _from},
@@ -234,6 +249,29 @@ defmodule CoAP.Transport do
     {:next_state, :closed, s}
   end
 
+  # RX_NON
+  def handle_event(
+        :info,
+        {:recv, %Message{type: :non, message_id: mid} = m, _from},
+        {:reliable_tx, mid},
+        s
+      ) do
+    rr_evt(s, {:rr_rx, m})
+    {:next_state, :closed, s}
+  end
+
+  # RX_CON
+  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, {:reliable_tx, mid}, s) do
+    rr_evt(s, {:rr_rx, m})
+    {:next_state, {:ack_pending, mid}, s}
+  end
+
+  # RX_* - non-matching id
+  def handle_event(:info, {:recv, _m, _from}, {:reliable_tx, _mid}, _s) do
+    {:keep_state_and_data, :postpone}
+  end
+
+  # TIMEOUT[RETX_TIMEOUT] - max_retransmit reached
   def handle_event(
         :state_timeout,
         %Message{type: :con},
@@ -247,19 +285,25 @@ defmodule CoAP.Transport do
     {:next_state, :closed, s}
   end
 
+  # TIMEOUT[RETX_TIMEOUT] - max_retransmit not reached
   def handle_event(:state_timeout, %Message{type: :con} = m, {:reliable_tx, _}, s) do
     tx(s, m)
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
     {:keep_state, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
+  #
   # STATE: :ack_pending
+  #
+
+  # M_CMD[ACK]
   def handle_event(:info, %Message{type: :ack, message_id: mid} = m, {:ack_pending, mid}, s) do
     tx(s, m)
     {:next_state, :closed, s}
   end
 
-  def handle_event(:info, _, {:ack_pending, _}, _s),
+  # M_CMD[*]
+  def handle_event(:info, %Message{}, {:ack_pending, _}, _s),
     do: {:keep_state_and_data, :postpone}
 
   @impl GenStateMachine

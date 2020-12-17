@@ -126,10 +126,10 @@ defmodule CoAP.TransportTest do
     t = start_transport()
 
     check all(
-      %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
-      from <- inet_peer(),
-      ack <- map(message(), &%{&1 | type: :ack, message_id: mid})
-      ) do
+            %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+            from <- inet_peer(),
+            ack <- map(message(), &%{&1 | type: :ack, message_id: mid})
+          ) do
       # Put FSM in reliable_tx state
       send(t, con)
       assert {:reliable_tx, ^mid} = state_name(t)
@@ -140,9 +140,43 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":reliable_tx[RX_NON] -> :closed[RR_EVT(rx)]"
+  property ":reliable_tx[RX_NON] -> :closed[RR_EVT(rx)]" do
+    t = start_transport()
 
-  # property ":reliable_tx[RX_CON] -> :ack_pending[RR_EVT(rx)]"
+    check all(
+            %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+            from <- inet_peer(),
+            non <- map(message(), &%{&1 | type: :ack, message_id: mid})
+          ) do
+      # Put FSM in reliable_tx state
+      send(t, con)
+      assert {:reliable_tx, ^mid} = state_name(t)
+
+      send(t, {:recv, non, from})
+      assert_receive {^t, {:rr_rx, ^non}}
+      assert :closed = state_name(t)
+    end
+  end
+
+  property ":reliable_tx[RX_CON] -> :ack_pending[RR_EVT(rx)]" do
+    t = start_transport()
+
+    check all(
+      %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+      from <- inet_peer(),
+      con2 <- map(message(), &%{&1 | type: :con, message_id: mid})
+    ) do
+      # Put FSM in reliable_tx state
+      send(t, con)
+      assert {:reliable_tx, ^mid} = state_name(t)
+
+      send(t, {:recv, con2, from})
+      assert_receive {^t, {:rr_rx, ^con2}}
+      assert {:ack_pending, ^mid} = state_name(t)
+
+      send(t, :reset)
+    end
+  end
 
   # property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> :reliable_tx[TX(con)]"
 
