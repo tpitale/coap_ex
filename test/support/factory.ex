@@ -93,7 +93,7 @@ defmodule CoAP.Test.Support.Factory do
   def inet_peer do
     gen all(
           address <- inet_address(),
-          port <- integer(1..65535)
+          port <- integer(1..65_535)
         ) do
       {address, port}
     end
@@ -121,14 +121,14 @@ defmodule CoAP.Test.Support.Factory do
     gen all(
           {a, b, c, d, e, f, g, h} <-
             tuple({
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535),
-              integer(0..65535)
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535),
+              integer(0..65_535)
             })
         ) do
       {a, b, c, d, e, f, g, h}
