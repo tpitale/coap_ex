@@ -92,7 +92,22 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":reliable_tx[RX_RST] -> :closed[RR_EVT(fail)]"
+  property ":reliable_tx[RX_RST] -> :closed[RR_EVT(fail)]" do
+    t = start_transport()
+
+    check all(
+            %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+            rst <- map(message(), &%{&1 | type: :reset})
+          ) do
+      # Put FSM to reliable_tx state
+      send(t, con)
+      assert {:reliable_tx, ^mid} = state_name(t)
+
+      send(t, {:recv, rst})
+      assert_receive {^t, :rr_fail}
+      assert :closed = state_name(t)
+    end
+  end
 
   # property ":reliable_tx[M_CMD(cancel)] -> :closed"
 
