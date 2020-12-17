@@ -64,16 +64,16 @@ defmodule CoAP.Transport do
   @type args() :: arg()
 
   @typedoc """
-  * `:cancel`: transport received a cancel event
-  * `:fail`: transport failed, due to reset or timeout
-  * `:rx`: transport received an ACK
+  * `:rr_cancel`: transport received a cancel event
+  * `:rr_fail`: transport failed, due to reset or timeout
+  * `:rr_rx`: transport received an ACK
   """
-  @type client_message_content :: :cancel | :fail | {:rx, Message.t()}
+  @type rr_message_content :: :rr_cancel | :rr_fail | {:rr_rx, Message.t()}
 
   @typedoc """
-  Messages from Transport to Request/Receive layer
+  Messages to Request/Receive layer
   """
-  @type client_message :: {pid(), client_message_content()}
+  @type rr_message :: {pid(), rr_message_content()}
 
   @typedoc """
   Messages from Socket to Transport layer
@@ -175,7 +175,7 @@ defmodule CoAP.Transport do
   end
 
   def handle_event(:info, {:recv, %Message{message_id: id, type: :con} = message, _from}, :closed, s) do
-    send(s.client, {:rx, message})
+    send(s.client, {self(), {:rr_rx, message}})
     # No timeout, but RR layer should take care of ack'ing message in a
     # reasonble time
     {:next_state, {:ack_pending, id}, s}
@@ -190,7 +190,7 @@ defmodule CoAP.Transport do
   end
 
   def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
-    send(s.client, {self(), :cancel})
+    send(s.client, {self(), :rr_cancel})
     {:next_state, :closed, s}
   end
 
@@ -200,7 +200,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, id},
         s
       ) do
-    send(s.client, {self(), {:rx, m}})
+    send(s.client, {self(), {:rr_rx, m}})
     {:next_state, :closed, s}
   end
 
@@ -210,7 +210,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, id},
         s
       ) do
-    send(s.client, {self(), :fail})
+    send(s.client, {self(), :rr_fail})
     {:next_state, :closed, s}
   end
 
@@ -223,7 +223,7 @@ defmodule CoAP.Transport do
           max_retransmit: max_retransmit
         } = s
       ) do
-    send(s.client, {self(), :fail})
+    send(s.client, {self(), :rr_fail})
     {:next_state, :closed, s}
   end
 
