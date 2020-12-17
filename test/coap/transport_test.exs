@@ -49,46 +49,40 @@ defmodule CoAP.TransportTest do
   property ":closed[RX_NON] -> :closed[RR_EVT(rx)]" do
     t = start_transport()
 
-    check all(non <- map(message(), &%{&1 | type: :non})) do
-      send(t, {:recv, non})
+    check all(
+            non <- map(message(), &%{&1 | type: :non}),
+            from <- inet_peer()
+          ) do
+      send(t, {:recv, non, from})
 
       assert_receive {^t, {:rr_rx, ^non}}
       assert :closed = state_name(t)
     end
   end
 
-  # property ":closed[RX_RST] -> :closed[REMOVE_OBSERVER]"
-
-  property ":closed[RX_ACK] -> :closed" do
+  property ":closed[RX_RST] -> :closed[REMOVE_OBSERVER]" do
     t = start_transport()
 
-    check all(ack <- map(message(), &%{&1 | type: :ack})) do
-      send(t, {:recv, ack})
-      refute_receive _
+    check all(
+            rst <- map(message(), &%{&1 | type: :reset}),
+            from <- inet_peer()
+          ) do
+      send(t, {:recv, rst, from})
+      assert_receive {^t, {:rr_rx, ^rst}}
       assert :closed = state_name(t)
     end
   end
 
-  property ":reliable_tx[timeout(retx_timeout)] -> :closed[RR_EVT(fail)]" do
+  property ":closed[RX_ACK] -> :closed" do
+    t = start_transport()
+
     check all(
-            con <- map(message(), &%{&1 | type: :con}),
-            ack_timeout <- integer(50..150),
-            max_retransmit <- integer(1..3),
-            max_runs: 5
+            ack <- map(message(), &%{&1 | type: :ack}),
+            from <- inet_peer()
           ) do
-      t = start_transport(ack_timeout: ack_timeout, max_retransmit: max_retransmit)
-      retx_timeout = Transport.__max_transmit_wait__(ack_timeout, max_retransmit)
-
-      send(t, con)
-      :timer.sleep(retx_timeout)
-
-      for _retry <- 1..(max_retransmit + 1) do
-        assert_received {:send, ^con}
-      end
-
-      assert_receive {^t, :rr_fail}
-
-      stop_transport(t)
+      send(t, {:recv, ack, from})
+      refute_receive _
+      assert :closed = state_name(t)
     end
   end
 
@@ -97,13 +91,14 @@ defmodule CoAP.TransportTest do
 
     check all(
             %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
-            rst <- map(message(), &%{&1 | type: :reset})
+            from <- inet_peer(),
+            rst <- map(message(), &%{&1 | type: :reset, message_id: mid})
           ) do
       # Put FSM to reliable_tx state
       send(t, con)
       assert {:reliable_tx, ^mid} = state_name(t)
 
-      send(t, {:recv, rst})
+      send(t, {:recv, rst, from})
       assert_receive {^t, :rr_fail}
       assert :closed = state_name(t)
     end
@@ -162,10 +157,10 @@ defmodule CoAP.TransportTest do
     t = start_transport()
 
     check all(
-      %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
-      from <- inet_peer(),
-      con2 <- map(message(), &%{&1 | type: :con, message_id: mid})
-    ) do
+            %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+            from <- inet_peer(),
+            con2 <- map(message(), &%{&1 | type: :con, message_id: mid})
+          ) do
       # Put FSM in reliable_tx state
       send(t, con)
       assert {:reliable_tx, ^mid} = state_name(t)
@@ -178,7 +173,55 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> :reliable_tx[TX(con)]"
+  property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> (max retry) -> :closed[RR_EVT(fail)]" do
+    check all(
+            con <- map(message(), &%{&1 | type: :con}),
+            ack_timeout <- integer(50..150),
+            max_retransmit <- integer(1..3),
+            max_runs: 5
+          ) do
+      t = start_transport(ack_timeout: ack_timeout, max_retransmit: max_retransmit)
+      retx_timeout = Transport.__max_transmit_wait__(ack_timeout, max_retransmit)
+
+      send(t, con)
+      :timer.sleep(retx_timeout)
+
+      for _retry <- 1..(max_retransmit + 1) do
+        assert_received {:send, ^con}
+      end
+
+      assert_receive {^t, :rr_fail}
+
+      Transport.stop(t)
+    end
+  end
+
+  property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> (retry) -> :closed[RR_EVT(rx)]" do
+    timeout = 100
+    t = start_transport(ack_timeout: timeout, max_retransmit: 2)
+
+    check all(
+            %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+            from <- inet_peer(),
+            ack <- map(message(), &%{&1 | type: :ack, message_id: mid}),
+            max_runs: 5
+          ) do
+      send(t, con)
+      assert_receive {:send, ^con}
+      :timer.sleep(timeout)
+
+      # First retry
+      assert_receive {:send, ^con}
+
+      # Send ACK
+      send(t, {:recv, ack, from})
+
+      assert_receive {^t, {:rr_rx, ^ack}}
+      assert :closed = state_name(t)
+
+      send(t, :reset)
+    end
+  end
 
   property ":ack_pending[M_CMD(accept)] -> :closed[TX(ack)]" do
     t = start_transport()
@@ -217,9 +260,6 @@ defmodule CoAP.TransportTest do
 
     t
   end
-
-  defp stop_transport(t),
-    do: GenStateMachine.stop(t, :normal)
 
   defp state_name(t), do: GenStateMachine.call(t, :state_name)
 end

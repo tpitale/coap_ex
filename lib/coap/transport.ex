@@ -123,6 +123,9 @@ defmodule CoAP.Transport do
     GenStateMachine.start(__MODULE__, {client, args})
   end
 
+  @doc false
+  def stop(pid, reason \\ :normal), do: GenStateMachine.stop(pid, reason)
+
   @impl GenStateMachine
   def init({client, args}) do
     args = Enum.into(args, %{})
@@ -143,8 +146,10 @@ defmodule CoAP.Transport do
 
   @impl GenStateMachine
   # For tests/debugging purpose
-  def handle_event(:info, :reset, _, s),
-    do: {:next_state, :closed, s}
+  def handle_event(:info, :reset, _, s) do
+    s = fill_retransmit_timeout(%{s | retries: 0})
+    {:next_state, :closed, s}
+  end
 
   def handle_event({:call, from}, :state_name, state_name, _s),
     do: {:keep_state_and_data, {:reply, from, state_name}}
@@ -199,14 +204,20 @@ defmodule CoAP.Transport do
   end
 
   # RX_NON
-  def handle_event(:info, {:recv, %Message{type: :non} = m}, :closed, s) do
+  def handle_event(:info, {:recv, %Message{type: :non} = m, _from}, :closed, s) do
     rr_evt(s, {:rr_rx, m})
     :keep_state_and_data
   end
 
   # RX_ACK
-  def handle_event(:info, {:recv, %Message{type: :ack}}, :closed, _s),
+  def handle_event(:info, {:recv, %Message{type: :ack}, _from}, :closed, _s),
     do: :keep_state_and_data
+
+  # RX_RST
+  def handle_event(:info, {:recv, %Message{type: :reset} = m, _from}, :closed, s) do
+    rr_evt(s, {:rr_rx, m})
+    :keep_state_and_data
+  end
 
   #
   # STATE: {:reliable_tx, message_id}
@@ -222,7 +233,12 @@ defmodule CoAP.Transport do
   end
 
   # RX_RST
-  def handle_event(:info, {:recv, %Message{type: :reset, message_id: mid}}, {:reliable_tx, mid}, s) do
+  def handle_event(
+        :info,
+        {:recv, %Message{type: :reset, message_id: mid}},
+        {:reliable_tx, mid},
+        s
+      ) do
     rr_evt(s, :rr_fail)
     {:next_state, :closed, s}
   end
@@ -261,7 +277,12 @@ defmodule CoAP.Transport do
   end
 
   # RX_CON
-  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, {:reliable_tx, mid}, s) do
+  def handle_event(
+        :info,
+        {:recv, %Message{type: :con, message_id: mid} = m, _from},
+        {:reliable_tx, mid},
+        s
+      ) do
     rr_evt(s, {:rr_rx, m})
     {:next_state, {:ack_pending, mid}, s}
   end
@@ -274,8 +295,8 @@ defmodule CoAP.Transport do
   # TIMEOUT[RETX_TIMEOUT] - max_retransmit reached
   def handle_event(
         :state_timeout,
-        %Message{type: :con},
-        {:reliable_tx, _},
+        %Message{type: :con, message_id: mid},
+        {:reliable_tx, mid},
         %__MODULE__{
           retries: max_retransmit,
           max_retransmit: max_retransmit
@@ -286,7 +307,12 @@ defmodule CoAP.Transport do
   end
 
   # TIMEOUT[RETX_TIMEOUT] - max_retransmit not reached
-  def handle_event(:state_timeout, %Message{type: :con} = m, {:reliable_tx, _}, s) do
+  def handle_event(
+        :state_timeout,
+        %Message{type: :con, message_id: mid} = m,
+        {:reliable_tx, mid},
+        s
+      ) do
     tx(s, m)
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
     {:keep_state, s, {:state_timeout, s.retransmit_timeout, m}}
