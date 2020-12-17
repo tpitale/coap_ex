@@ -193,6 +193,9 @@ defmodule CoAP.Transport do
     :keep_state_and_data
   end
 
+  def handle_event(:info, {:recv, %Message{type: :ack}}, :closed, _s),
+    do: :keep_state_and_data
+
   # STATE: {:reliable_tx, message_id}
   def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
     {:keep_state_and_data, :postpone}

@@ -59,7 +59,15 @@ defmodule CoAP.TransportTest do
 
   # property ":closed[RX_RST] -> :closed[REMOVE_OBSERVER]"
 
-  # property ":closed[RX_ACK] -> :closed"
+  property ":closed[RX_ACK] -> :closed" do
+    t = start_transport()
+
+    check all(ack <- map(message(), &%{&1 | type: :ack})) do
+      send(t, {:recv, ack})
+      refute_receive _
+      assert :closed = state_name(t)
+    end
+  end
 
   property ":reliable_tx[timeout(retx_timeout)] -> :closed[RR_EVT(fail)]" do
     check all(
