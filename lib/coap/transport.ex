@@ -164,14 +164,14 @@ defmodule CoAP.Transport do
     do: :keep_state_and_data
 
   # STATE: :closed
-  def handle_event(:info, {:reliable_send, message}, :closed, s),
-    do: handle_event(:info, {:reliable_send, message, nil}, :closed, s)
+  def handle_event(:info, %Message{type: :con} = message, :closed, s),
+    do: handle_event(:info, {message, nil}, :closed, s)
 
-  def handle_event(:info, {:reliable_send, message, tag}, :closed, s) do
+  def handle_event(:info, {%Message{type: :con} = message, tag}, :closed, s) do
     send(s.socket, {:send, message, tag})
 
     {:next_state, {:reliable_tx, message.message_id}, s,
-     {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}}}
+     {:state_timeout, s.retransmit_timeout, {message, tag}}}
   end
 
   def handle_event(:info, {:recv, %Message{message_id: id, type: :con} = message, _from}, :closed, s) do
@@ -182,10 +182,10 @@ defmodule CoAP.Transport do
   end
 
   # STATE: {:reliable_tx, message_id}
-  def handle_event(:info, {:reliable_send, m}, {:reliable_tx, id}, s),
-    do: handle_event(:info, {:reliable_send, m, nil}, {:reliable_tx, id}, s)
+  def handle_event(:info, %Message{type: :con} = m, {:reliable_tx, id}, s),
+    do: handle_event(:info, {m, nil}, {:reliable_tx, id}, s)
 
-  def handle_event(:info, {:reliable_send, _message, _tag}, {:reliable_tx, _id}, _s) do
+  def handle_event(:info, {%Message{type: :con} =  _message, _tag}, {:reliable_tx, _id}, _s) do
     {:keep_state_and_data, :postpone}
   end
 
@@ -216,7 +216,7 @@ defmodule CoAP.Transport do
 
   def handle_event(
         :state_timeout,
-        {:reliable_send, _, _},
+        {%Message{type: :con}, _},
         {:reliable_tx, _},
         %__MODULE__{
           retries: max_retransmit,
@@ -227,7 +227,7 @@ defmodule CoAP.Transport do
     {:next_state, :closed, s}
   end
 
-  def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
+  def handle_event(:state_timeout, {%Message{type: :con} = message, tag} = event, {:reliable_tx, _}, s) do
     send(s.socket, {:send, message, tag})
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
     {:keep_state, s, {:state_timeout, s.retransmit_timeout, event}}

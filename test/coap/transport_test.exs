@@ -9,7 +9,7 @@ defmodule CoAP.TransportTest do
     t = start_transport()
 
     check all(%Message{message_id: id} = message <- map(message(), &%{&1 | type: :con})) do
-      send(t, {:reliable_send, message})
+      send(t, message)
       assert_receive {:send, ^message, nil}
       assert {:reliable_tx, ^id} = state_name(t)
 
@@ -51,7 +51,7 @@ defmodule CoAP.TransportTest do
       t = start_transport(ack_timeout: ack_timeout, max_retransmit: max_retransmit)
       retx_timeout = Transport.__max_transmit_wait__(ack_timeout, max_retransmit)
 
-      send(t, {:reliable_send, message})
+      send(t, message)
       :timer.sleep(retx_timeout)
 
       for _retry <- 1..(max_retransmit + 1) do
