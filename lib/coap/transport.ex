@@ -68,7 +68,7 @@ defmodule CoAP.Transport do
   * `:fail`: transport failed, due to reset or timeout
   * `:rx`: transport received an ACK
   """
-  @type client_message_content :: :cancel | :fail | :rx
+  @type client_message_content :: :cancel | :fail | {:rx, Message.t()}
 
   @typedoc """
   Messages from Transport to Request/Receive layer
@@ -143,10 +143,6 @@ defmodule CoAP.Transport do
 
   @impl GenStateMachine
   # STATE: _any
-  def handle_event(:info, :stop, _, s),
-    # Mostly for debug/test
-    do: {:stop, :normal, s}
-
   def handle_event(
         :info,
         {:DOWN, ref, :process, _socket, _reason},
@@ -164,6 +160,9 @@ defmodule CoAP.Transport do
     end
   end
 
+  def handle_event(:info, {:DOWN, _, _, _, _}, _, _s),
+    do: :keep_state_and_data
+
   # STATE: :closed
   def handle_event(:info, {:reliable_send, message}, :closed, s),
     do: handle_event(:info, {:reliable_send, message, nil}, :closed, s)
@@ -173,6 +172,13 @@ defmodule CoAP.Transport do
 
     {:next_state, {:reliable_tx, message.message_id}, s,
      {:state_timeout, s.retransmit_timeout, {:reliable_send, message, tag}}}
+  end
+
+  def handle_event(:info, {:recv, %Message{message_id: id, type: :con} = message, _from}, :closed, s) do
+    send(s.client, {:rx, message})
+    # No timeout, but RR layer should take care of ack'ing message in a
+    # reasonble time
+    {:next_state, {:ack_pending, id}, s}
   end
 
   # STATE: {:reliable_tx, message_id}
@@ -185,17 +191,17 @@ defmodule CoAP.Transport do
 
   def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
     send(s.client, {self(), :cancel})
-    {:stop, :normal, s}
+    {:next_state, :closed, s}
   end
 
   def handle_event(
         :info,
-        {:recv, %Message{type: :ack, message_id: id}, _from},
+        {:recv, %Message{type: :ack, message_id: id} = m, _from},
         {:reliable_tx, id},
         s
       ) do
-    send(s.client, {self(), :rx})
-    {:stop, :normal, s}
+    send(s.client, {self(), {:rx, m}})
+    {:next_state, :closed, s}
   end
 
   def handle_event(
@@ -205,7 +211,7 @@ defmodule CoAP.Transport do
         s
       ) do
     send(s.client, {self(), :fail})
-    {:stop, :normal, s}
+    {:next_state, :closed, s}
   end
 
   def handle_event(
@@ -218,7 +224,7 @@ defmodule CoAP.Transport do
         } = s
       ) do
     send(s.client, {self(), :fail})
-    {:stop, :normal, s}
+    {:next_state, :closed, s}
   end
 
   def handle_event(:state_timeout, {:reliable_send, message, tag} = event, {:reliable_tx, _}, s) do
@@ -231,6 +237,13 @@ defmodule CoAP.Transport do
   def handle_event(_type, _content, :ack_pending, _s) do
     :keep_state_and_data
   end
+
+  # For tests/debugging purpose
+  def handle_event(:info, :reset, _, s),
+    do: {:next_state, :closed, s}
+
+  def handle_event({:call, from}, :state_name, state_name, _s),
+    do: {:keep_state_and_data, {:reply, from, state_name}}
 
   @impl GenStateMachine
   def terminate(_reason, _state, %{socket: nil}),

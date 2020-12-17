@@ -1,21 +1,37 @@
 defmodule CoAP.TransportTest do
   use CoAP.Test.Support.DataCase
 
+  alias CoAP.Message
   alias CoAP.Test.Support.Socket
   alias CoAP.Transport
 
   property ":closed[M_CMD(reliable_send)] -> :reliable_tx[TX(con)]" do
-    check all(message <- map(message(), &%{&1 | type: :con})) do
-      t = start_transport()
+    t = start_transport()
 
+    check all(%Message{message_id: id} = message <- map(message(), &%{&1 | type: :con})) do
       send(t, {:reliable_send, message})
       assert_receive {:send, ^message, nil}
+      assert {:reliable_tx, ^id} = state_name(t)
 
-      stop_transport(t)
+      send(t, :reset)
     end
   end
 
-  # property ":closed[RX_CON] -> :ack_pending[RR_EVT(rx)]"
+  property ":closed[RX_CON] -> :ack_pending[RR_EVT(rx)]" do
+    t = start_transport()
+
+    check all(
+            %Message{message_id: id} = message <- map(message(), &%{&1 | type: :con}),
+            from <- inet_peer()
+          ) do
+      send(t, {:recv, message, from})
+
+      assert_receive {:rx, ^message}
+      assert {:ack_pending, ^id} = state_name(t)
+
+      send(t, :reset)
+    end
+  end
 
   # property ":closed[M_CMD(unreliable_send)] -> :closed[TX(non)]"
 
@@ -81,5 +97,8 @@ defmodule CoAP.TransportTest do
     t
   end
 
-  defp stop_transport(t), do: send(t, :stop)
+  defp stop_transport(t),
+    do: GenStateMachine.stop(t, :normal)
+
+  defp state_name(t), do: GenStateMachine.call(t, :state_name)
 end
