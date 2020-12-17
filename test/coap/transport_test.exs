@@ -109,9 +109,36 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":reliable_tx[M_CMD(cancel)] -> :closed"
+  property ":reliable_tx[M_CMD(cancel)] -> :closed" do
+    t = start_transport()
 
-  # property ":reliable_tx[RX_ACK] -> :closed[RR_EVT(rx)]"
+    check all(%Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con})) do
+      # Put FSM in reliable_tx state
+      send(t, con)
+      assert {:reliable_tx, ^mid} = state_name(t)
+
+      send(t, :cancel)
+      assert :closed = state_name(t)
+    end
+  end
+
+  property ":reliable_tx[RX_ACK] -> :closed[RR_EVT(rx)]" do
+    t = start_transport()
+
+    check all(
+      %Message{message_id: mid} = con <- map(message(), &%{&1 | type: :con}),
+      from <- inet_peer(),
+      ack <- map(message(), &%{&1 | type: :ack, message_id: mid})
+      ) do
+      # Put FSM in reliable_tx state
+      send(t, con)
+      assert {:reliable_tx, ^mid} = state_name(t)
+
+      send(t, {:recv, ack, from})
+      assert_receive {^t, {:rr_rx, ^ack}}
+      assert :closed = state_name(t)
+    end
+  end
 
   # property ":reliable_tx[RX_NON] -> :closed[RR_EVT(rx)]"
 

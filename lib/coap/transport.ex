@@ -197,18 +197,21 @@ defmodule CoAP.Transport do
     do: :keep_state_and_data
 
   # STATE: {:reliable_tx, message_id}
+  def handle_event(:info, :cancel, {:reliable_tx, _}, s),
+    do: {:next_state, :closed, s}
+
   def handle_event(:info, {:recv, %Message{type: :reset}}, {:reliable_tx, _}, s) do
     send(s.client, {self(), :rr_fail})
     {:next_state, :closed, s}
   end
 
-  def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
-    {:keep_state_and_data, :postpone}
+  def handle_event(:info, {:recv, %Message{message_id: mid, type: :ack} = m, _from}, {:reliable_tx, mid}, s) do
+    send(s.client, {self(), {:rr_rx, m}})
+    {:next_state, :closed, s}
   end
 
-  def handle_event(:info, :cancel, {:reliable_tx, _}, s) do
-    send(s.client, {self(), :rr_cancel})
-    {:next_state, :closed, s}
+  def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
+    {:keep_state_and_data, :postpone}
   end
 
   def handle_event(
