@@ -183,6 +183,11 @@ defmodule CoAP.Transport do
     {:next_state, {:ack_pending, mid}, s}
   end
 
+  def handle_event(:info, %Message{type: :non} = m, :closed, s) do
+    send(s.socket, {:send, m})
+    :keep_state_and_data
+  end
+
   # STATE: {:reliable_tx, message_id}
   def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
     {:keep_state_and_data, :postpone}

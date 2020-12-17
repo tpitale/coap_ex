@@ -33,7 +33,18 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":closed[M_CMD(unreliable_send)] -> :closed[TX(non)]"
+  property ":closed[M_CMD(unreliable_send)] -> :closed[TX(non)]" do
+    t = start_transport()
+
+    check all(non <- map(message(), &%{&1 | type: :non})) do
+      send(t, non)
+
+      assert_receive {:send, ^non}
+      assert :closed = state_name(t)
+
+      send(t, :reset)
+    end
+  end
 
   # property ":closed[RX_NON] -> :closed[RR_EVT(rx)]"
 
