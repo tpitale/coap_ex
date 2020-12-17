@@ -76,7 +76,24 @@ defmodule CoAP.TransportTest do
 
   # property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> :reliable_tx[TX(con)]"
 
-  # property ":ack_pending[M_CMD(accept)] -> :closed[TX(ack)]"
+  property ":ack_pending[M_CMD(accept)] -> :closed[TX(ack)]" do
+    t = start_transport()
+
+    check all(
+      %Message{message_id: id} = con <- map(message(), &%{&1 | type: :con}),
+      ack <- map(message(), &%{&1 | message_id: id, type: :ack}),
+      from <- inet_peer()
+      ) do
+      # Put FSM to ack_pending state
+      send(t, {:recv, con, from})
+      assert {:ack_pending, ^id} = state_name(t)
+
+      # RR layer sends ACK
+      send(t, ack)
+      assert_receive {:send, ^ack, nil}
+      assert :closed = state_name(t)
+    end
+  end
 
   property "retransmit_timeout" do
     check all(

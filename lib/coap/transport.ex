@@ -234,9 +234,13 @@ defmodule CoAP.Transport do
   end
 
   # STATE: :ack_pending
-  def handle_event(_type, _content, :ack_pending, _s) do
-    :keep_state_and_data
+  def handle_event(:info, %Message{type: :ack, message_id: id} = m, {:ack_pending, id}, s) do
+    send(s.socket, {:send, m, nil})
+    {:next_state, :closed, s}
   end
+
+  def handle_event(:info, _, {:ack_pending, _}, _s),
+    do: {:keep_state_and_data, :postpone}
 
   # For tests/debugging purpose
   def handle_event(:info, :reset, _, s),
