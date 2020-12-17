@@ -4,7 +4,7 @@ defmodule CoAP.TransportTest do
   alias CoAP.Test.Support.Socket
   alias CoAP.Transport
 
-  property ":closed[M_CMD(reliable_send)] -> TX(con)" do
+  property ":closed[M_CMD(reliable_send)] -> :reliable_tx[TX(con)]" do
     check all(message <- map(message(), &%{&1 | type: :con})) do
       t = start_transport()
 
@@ -15,7 +15,17 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  property ":reliable_tx[timeout(retx_timeout)] -> RR_EVT(fail)" do
+  # property ":closed[RX_CON] -> :ack_pending[RR_EVT(rx)]"
+
+  # property ":closed[M_CMD(unreliable_send)] -> :closed[TX(non)]"
+
+  # property ":closed[RX_NON] -> :closed[RR_EVT(rx)]"
+
+  # property ":closed[RX_RST] -> :closed[REMOVE_OBSERVER]"
+
+  # property ":closed[RX_ACK] -> :closed"
+
+  property ":reliable_tx[timeout(retx_timeout)] -> :closed[RR_EVT(fail)]" do
     check all(
             message <- map(message(), &%{&1 | type: :con}),
             ack_timeout <- integer(50..150),
@@ -37,6 +47,20 @@ defmodule CoAP.TransportTest do
       stop_transport(t)
     end
   end
+
+  # property ":reliable_tx[RX_RST] -> :closed[RR_EVT(fail)]"
+
+  # property ":reliable_tx[M_CMD(cancel)] -> :closed"
+
+  # property ":reliable_tx[RX_ACK] -> :closed[RR_EVT(rx)]"
+
+  # property ":reliable_tx[RX_NON] -> :closed[RR_EVT(rx)]"
+
+  # property ":reliable_tx[RX_CON] -> :ack_pending[RR_EVT(rx)]"
+
+  # property ":reliable_tx[TIMEOUT(RETX_TIMEOUT)] -> :reliable_tx[TX(con)]"
+
+  # property ":ack_pending[M_CMD(accept)] -> :closed[TX(ack)]"
 
   property "retransmit_timeout" do
     check all(
