@@ -13,8 +13,6 @@ defmodule CoAP.Transport.UDP do
   use GenServer
 
   import CoAP.Util
-  import CoAP.Util.BinaryFormatter, only: [to_hex: 1]
-  import Logger, only: [debug: 1]
 
   alias CoAP.Message
   alias CoAP.Transport
@@ -55,23 +53,8 @@ defmodule CoAP.Transport.UDP do
   end
 
   @impl GenServer
-  def handle_info({:send, message, tag}, s) do
+  def handle_info({:send, message}, s) do
     data = Message.encode(message)
-
-    debug("CoAP socket sending raw data #{to_hex(data)} to #{s.host}:#{s.port}")
-
-    :telemetry.execute(
-      [:coap_ex, :connection, :data_sent],
-      %{size: byte_size(data)},
-      %{
-        host: s.host,
-        port: s.port,
-        message_id: message.message_id,
-        token: message.token,
-        tag: tag
-      }
-    )
-
     :ok = :gen_udp.send(s.socket, s.host, s.port, data)
     {:noreply, s, @timeout}
   end

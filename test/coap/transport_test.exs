@@ -8,9 +8,9 @@ defmodule CoAP.TransportTest do
   property ":closed[M_CMD(reliable_send)] -> :reliable_tx[TX(con)]" do
     t = start_transport()
 
-    check all(%Message{message_id: id} = message <- map(message(), &%{&1 | type: :con})) do
-      send(t, message)
-      assert_receive {:send, ^message, nil}
+    check all(%Message{message_id: id} = con <- map(message(), &%{&1 | type: :con})) do
+      send(t, con)
+      assert_receive {:send, ^con}
       assert {:reliable_tx, ^id} = state_name(t)
 
       send(t, :reset)
@@ -21,12 +21,12 @@ defmodule CoAP.TransportTest do
     t = start_transport()
 
     check all(
-            %Message{message_id: id} = message <- map(message(), &%{&1 | type: :con}),
+            %Message{message_id: id} = con <- map(message(), &%{&1 | type: :con}),
             from <- inet_peer()
           ) do
-      send(t, {:recv, message, from})
+      send(t, {:recv, con, from})
 
-      assert_receive {^t, {:rr_rx, ^message}}
+      assert_receive {^t, {:rr_rx, ^con}}
       assert {:ack_pending, ^id} = state_name(t)
 
       send(t, :reset)
@@ -43,7 +43,7 @@ defmodule CoAP.TransportTest do
 
   property ":reliable_tx[timeout(retx_timeout)] -> :closed[RR_EVT(fail)]" do
     check all(
-            message <- map(message(), &%{&1 | type: :con}),
+            con <- map(message(), &%{&1 | type: :con}),
             ack_timeout <- integer(50..150),
             max_retransmit <- integer(1..3),
             max_runs: 5
@@ -51,11 +51,11 @@ defmodule CoAP.TransportTest do
       t = start_transport(ack_timeout: ack_timeout, max_retransmit: max_retransmit)
       retx_timeout = Transport.__max_transmit_wait__(ack_timeout, max_retransmit)
 
-      send(t, message)
+      send(t, con)
       :timer.sleep(retx_timeout)
 
       for _retry <- 1..(max_retransmit + 1) do
-        assert_received {:send, ^message, _}
+        assert_received {:send, ^con}
       end
 
       assert_receive {^t, :rr_fail}
@@ -80,17 +80,17 @@ defmodule CoAP.TransportTest do
     t = start_transport()
 
     check all(
-      %Message{message_id: id} = con <- map(message(), &%{&1 | type: :con}),
-      ack <- map(message(), &%{&1 | message_id: id, type: :ack}),
-      from <- inet_peer()
-      ) do
+            %Message{message_id: id} = con <- map(message(), &%{&1 | type: :con}),
+            ack <- map(message(), &%{&1 | message_id: id, type: :ack}),
+            from <- inet_peer()
+          ) do
       # Put FSM to ack_pending state
       send(t, {:recv, con, from})
       assert {:ack_pending, ^id} = state_name(t)
 
       # RR layer sends ACK
       send(t, ack)
-      assert_receive {:send, ^ack, nil}
+      assert_receive {:send, ^ack}
       assert :closed = state_name(t)
     end
   end

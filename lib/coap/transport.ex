@@ -142,6 +142,13 @@ defmodule CoAP.Transport do
   end
 
   @impl GenStateMachine
+  # For tests/debugging purpose
+  def handle_event(:info, :reset, _, s),
+    do: {:next_state, :closed, s}
+
+  def handle_event({:call, from}, :state_name, state_name, _s),
+    do: {:keep_state_and_data, {:reply, from, state_name}}
+
   # STATE: _any
   def handle_event(
         :info,
@@ -164,28 +171,20 @@ defmodule CoAP.Transport do
     do: :keep_state_and_data
 
   # STATE: :closed
-  def handle_event(:info, %Message{type: :con} = message, :closed, s),
-    do: handle_event(:info, {message, nil}, :closed, s)
-
-  def handle_event(:info, {%Message{type: :con} = message, tag}, :closed, s) do
-    send(s.socket, {:send, message, tag})
-
-    {:next_state, {:reliable_tx, message.message_id}, s,
-     {:state_timeout, s.retransmit_timeout, {message, tag}}}
+  def handle_event(:info, %Message{type: :con, message_id: mid} = m, :closed, s) do
+    send(s.socket, {:send, m})
+    {:next_state, {:reliable_tx, mid}, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
-  def handle_event(:info, {:recv, %Message{message_id: id, type: :con} = message, _from}, :closed, s) do
-    send(s.client, {self(), {:rr_rx, message}})
+  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, :closed, s) do
+    send(s.client, {self(), {:rr_rx, m}})
     # No timeout, but RR layer should take care of ack'ing message in a
     # reasonble time
-    {:next_state, {:ack_pending, id}, s}
+    {:next_state, {:ack_pending, mid}, s}
   end
 
   # STATE: {:reliable_tx, message_id}
-  def handle_event(:info, %Message{type: :con} = m, {:reliable_tx, id}, s),
-    do: handle_event(:info, {m, nil}, {:reliable_tx, id}, s)
-
-  def handle_event(:info, {%Message{type: :con} =  _message, _tag}, {:reliable_tx, _id}, _s) do
+  def handle_event(:info, %Message{type: :con}, {:reliable_tx, _id}, _s) do
     {:keep_state_and_data, :postpone}
   end
 
@@ -196,8 +195,8 @@ defmodule CoAP.Transport do
 
   def handle_event(
         :info,
-        {:recv, %Message{type: :ack, message_id: id} = m, _from},
-        {:reliable_tx, id},
+        {:recv, %Message{type: :ack, message_id: mid} = m, _from},
+        {:reliable_tx, mid},
         s
       ) do
     send(s.client, {self(), {:rr_rx, m}})
@@ -206,8 +205,8 @@ defmodule CoAP.Transport do
 
   def handle_event(
         :info,
-        {:recv, %Message{type: :reset, message_id: id}, _from},
-        {:reliable_tx, id},
+        {:recv, %Message{type: :reset, message_id: mid}, _from},
+        {:reliable_tx, mid},
         s
       ) do
     send(s.client, {self(), :rr_fail})
@@ -216,7 +215,7 @@ defmodule CoAP.Transport do
 
   def handle_event(
         :state_timeout,
-        {%Message{type: :con}, _},
+        %Message{type: :con},
         {:reliable_tx, _},
         %__MODULE__{
           retries: max_retransmit,
@@ -227,27 +226,20 @@ defmodule CoAP.Transport do
     {:next_state, :closed, s}
   end
 
-  def handle_event(:state_timeout, {%Message{type: :con} = message, tag} = event, {:reliable_tx, _}, s) do
-    send(s.socket, {:send, message, tag})
+  def handle_event(:state_timeout, %Message{type: :con} = m, {:reliable_tx, _}, s) do
+    send(s.socket, {:send, m})
     s = %{s | retransmit_timeout: s.retransmit_timeout * 2, retries: s.retries + 1}
-    {:keep_state, s, {:state_timeout, s.retransmit_timeout, event}}
+    {:keep_state, s, {:state_timeout, s.retransmit_timeout, m}}
   end
 
   # STATE: :ack_pending
-  def handle_event(:info, %Message{type: :ack, message_id: id} = m, {:ack_pending, id}, s) do
-    send(s.socket, {:send, m, nil})
+  def handle_event(:info, %Message{type: :ack, message_id: mid} = m, {:ack_pending, mid}, s) do
+    send(s.socket, {:send, m})
     {:next_state, :closed, s}
   end
 
   def handle_event(:info, _, {:ack_pending, _}, _s),
     do: {:keep_state_and_data, :postpone}
-
-  # For tests/debugging purpose
-  def handle_event(:info, :reset, _, s),
-    do: {:next_state, :closed, s}
-
-  def handle_event({:call, from}, :state_name, state_name, _s),
-    do: {:keep_state_and_data, {:reply, from, state_name}}
 
   @impl GenStateMachine
   def terminate(_reason, _state, %{socket: nil}),
