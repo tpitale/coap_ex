@@ -46,7 +46,16 @@ defmodule CoAP.TransportTest do
     end
   end
 
-  # property ":closed[RX_NON] -> :closed[RR_EVT(rx)]"
+  property ":closed[RX_NON] -> :closed[RR_EVT(rx)]" do
+    t = start_transport()
+
+    check all(non <- map(message(), &%{&1 | type: :non})) do
+      send(t, {:recv, non})
+
+      assert_receive {^t, {:rr_rx, ^non}}
+      assert :closed = state_name(t)
+    end
+  end
 
   # property ":closed[RX_RST] -> :closed[REMOVE_OBSERVER]"
 
