@@ -1,14 +1,6 @@
 defmodule CoAP.Transport.UDP do
   @moduledoc """
   Implements UDP specific transport
-
-  Integration with transport layer is done through:
-  * `CoAP.Transport.start/1` callback
-  * received messages:
-    * `{:send, CoAP.Message.t(), tag :: any()}`
-    * `:close`
-  * emitted messages:
-    * `{:recv, CoAP.Message.t(), from :: {:inet.ip_address(), :inet.port_number()}}`
   """
   use GenServer
 

@@ -1,141 +1,162 @@
 defmodule CoAP.Client do
   @moduledoc """
-    CoAP Client interface
+  CoAP Client interface
   """
   alias CoAP.Message
+  alias CoAP.Transport
 
-  import Logger, only: [debug: 1]
+  # Default timeout: 5 sec
+  @default_timeout 5_000
+  @message_opts [:ack_timeout, :max_retransmit, :socket_adapter, :socket_opts]
 
+  @type option() ::
+          {:ack_timeout, integer()}
+          | {:max_retransmit, integer()}
+          | {:socket_adapter, module()}
+          | {:socket_opts, any()}
+          | {:timeout, integer()}
+          | {:confirmable, boolean()}
+
+  @typedoc """
+  Options related to Message layer behaviour:
+  * `ack_timeout`: initial timeout for receiving ack
+  * `max_retransmit`: max retransmission attempts
+  * `socket_adapter`: module implementing `CoAP.Transport` behaviour. Default
+    is to infer from peer URI.
+  * `socket_opts`: options passed to socket adapter
+
+  Options related to Request/Response layer
+  * `timeout`: timeout for receiving response
+  * `confirmable`: if true, request is confirmable
+  """
+  @type options :: [option()]
   @type request_url :: binary
-  @type request_type :: :con | :non | :ack | :reset
   @type request_method :: :get | :post | :put | :delete
   @type response_error :: {:timeout, :await_response} | any
-  @type response :: CoAP.Message.t() | {:error, response_error}
-
-  defmodule Options do
-    # spec default for max_retransmits
-    @max_retries 4
-    @wait_timeout 10_000
-
-    @type t :: %__MODULE__{
-            retries: integer,
-            retry_timeout: integer,
-            timeout: integer,
-            ack_timeout: integer,
-            tag: any
-          }
-
-    defstruct retries: @max_retries,
-              retry_timeout: nil,
-              timeout: @wait_timeout,
-              ack_timeout: nil,
-              tag: nil
-  end
-
-  # _TODO: options: headers/params?
+  @type response :: Message.t() | {:error, response_error}
 
   @doc """
-    Perform a confirmable, GET request to a URL
-    Returns a `CoAP.Message` response, or an error tuple
-    Optionally takes a binary content payload
+  Perform GET request to a URL
+  Returns a `CoAP.Message` response, or an error tuple
 
-    CoAP.Client.get("coap://localhost:5683/api/")
+  CoAP.Client.get("coap://localhost:5683/api/")
   """
-  @spec get(request_url, binary) :: response
-  def get(url, content \\ <<>>), do: con(:get, url, content)
+  @spec get(request_url, options) :: response
+  def get(url, options \\ []), do: request(:get, url, <<>>, options)
 
   @doc """
-    Perform a confirmable, POST request to a URL
-    Returns a `CoAP.Message` response, or an error tuple
-    Optionally takes a binary content payload
+  Perform POST request to a URL
+  Returns a `CoAP.Message` response, or an error tuple
+  Optionally takes a binary content payload
 
-    CoAP.Client.post("coap://localhost:5683/api/", <<0x00, 0x01, …>>)
+  CoAP.Client.post("coap://localhost:5683/api/", <<0x00, 0x01, …>>)
   """
-  @spec post(request_url, binary) :: response
-  def post(url, content \\ <<>>), do: con(:post, url, content)
+  @spec post(request_url, binary, options) :: response
+  def post(url, content \\ <<>>, options), do: request(:post, url, content, options)
 
   @doc """
-    Perform a confirmable, PUT request to a URL
-    Returns a `CoAP.Message` response, or an error tuple
-    Optionally takes a binary content payload
+  Perform PUT request to a URL
+  Returns a `CoAP.Message` response, or an error tuple
+  Optionally takes a binary content payload
 
-    CoAP.Client.put("coap://localhost:5683/api/", "somepayload")
+  CoAP.Client.put("coap://localhost:5683/api/", "somepayload")
   """
-  @spec put(request_url, binary) :: response
-  def put(url, content \\ <<>>), do: con(:put, url, content)
+  @spec put(request_url, binary, options) :: response
+  def put(url, content \\ <<>>, options \\ []), do: request(:put, url, content, options)
 
   @doc """
-    Perform a confirmable, DELETE request to a URL
-    Returns a `CoAP.Message` response, or an error tuple
+  Perform a DELETE request to a URL
+  Returns a `CoAP.Message` response, or an error tuple
 
-    CoAP.Client.delete("coap://localhost:5683/api/")
+  CoAP.Client.delete("coap://localhost:5683/api/")
   """
-  @spec delete(request_url) :: response
-  def delete(url), do: con(:delete, url)
+  @spec delete(request_url, options) :: response
+  def delete(url, options \\ []), do: request(:delete, url, <<>>, options)
 
   @doc """
-    Perform a confirmable request of any method (get/post/put/delete)
-    Returns a `CoAP.Message` response, or an error tuple
+  Perform a request
 
-    CoAP.Client.con(:get, "coap://localhost:5683/api/", "somepayload")
+  Accepts 3-5 arguments:
+  * method: 1 of :get, :post, :put :delete
+  * url: binary, parseable by `URI.parse()`
+  * content (optional): a binary payload
+  * options (optional): see `options()` typespec
+
+  Returns response message or error tuple
   """
-  @spec con(request_method, request_url, binary) :: response
-  def con(method, url, content \\ <<>>), do: request(:con, method, url, content)
-  # defp non(method, url), do: request(:non, method, url)
-  # defp ack(method, url), do: request(:ack, method, url)
-  # defp reset(method, url), do: request(:reset, method, url)
-
-  @doc """
-    Perform a request
-
-    Accepts 3-5 arguments:
-    * type: 1 of :con, :non, :ack, :reset
-    * method: 1 of :get, :post, :put :delete
-    * url: binary, parseable by `:uri_string.parse`
-    * optional content: a binary payload
-    * optional options: a map of options - retries, retry_timeout, and timeout
-
-    Returns the binary of the response
-  """
-  @spec request(request_type, request_method, request_url, binary, map) ::
-          response
-  def request(type, method, url, content \\ <<>>, options \\ %{}) do
-    uri = :uri_string.parse(url)
-
-    host = uri[:host]
-    port = uri[:port]
-    token = :crypto.strong_rand_bytes(4)
-
-    options = struct(Options, options)
-
+  @spec request(request_method, request_url, binary, options) :: response
+  def request(method, url, content \\ <<>>, options \\ []) do
+    uri = URI.parse(url)
     {code_class, code_detail} = Message.encode_method(method)
 
     message = %Message{
       request: true,
-      type: type,
+      type: if(Keyword.get(options, :confirmable, true), do: :con, else: :non),
       method: method,
-      token: token,
+      token: :crypto.strong_rand_bytes(4),
       code_class: code_class,
       code_detail: code_detail,
       payload: content,
-      options: %{uri_path: String.split(uri[:path], "/")}
+      options: %{uri_path: String.split(uri.path, "/")}
     }
 
-    debug("Client Request: #{inspect(message)}")
-
-    {:ok, connection} = CoAP.Connection.start_link([self(), {host, port, token}, options])
-
-    send(connection, {:deliver, message})
-
-    await_response(message, options.timeout)
+    fn -> do_request(uri, message, options) end
+    |> Task.async()
+    |> Task.await(:infinity)
   end
 
-  defp await_response(_message, timeout) do
-    receive do
-      {:deliver, response, _peer} -> response
-      {:error, reason} -> {:error, reason}
+  ###
+  ### Private
+  ###
+  defp do_request(uri, message, options) do
+    {message_opts, rr_opts} = Keyword.split(options, @message_opts)
+    {:ok, transport} = Transport.start_link(self(), [{:peer, uri} | message_opts])
+
+    try do
+      send(transport, message)
+      timeout = Keyword.get(rr_opts, :timeout, @default_timeout)
+      %Message{token: token, message_id: mid} = message
+      start_time = System.monotonic_time(:millisecond)
+      waiting(transport, mid, token, start_time, timeout)
     after
-      timeout -> {:error, {:timeout, :await_response}}
+      _ = Transport.stop(transport)
+    end
+  end
+
+  defp waiting(transport, mid, token, start_time, timeout) do
+    receive do
+      {:rr_fail, ^mid, reason} ->
+        {:error, reason}
+
+      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token, payload: <<>>}, _peer} ->
+        # Separate response
+        timeout = max(0, timeout - (System.monotonic_time(:millisecond) - start_time))
+        waiting_separate(transport, token, timeout)
+
+      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token} = m, _peer} ->
+        # Piggybacked response
+        m
+
+      {:rr_rx, %Message{type: :non, token: ^token} = m, _peer} ->
+        # Non confirmable response
+        m
+    after
+      timeout ->
+        {:error, {:timeout, :await_response}}
+    end
+  end
+
+  defp waiting_separate(transport, token, timeout) do
+    receive do
+      {:rr_rx, %Message{type: :non, token: ^token} = m, _peer} ->
+        m
+
+      {:rr_rx, %Message{type: :con, token: ^token} = m, _peer} ->
+        send(transport, Message.response_for(m))
+        m
+    after
+      timeout ->
+        {:error, {:timeout, :await_response}}
     end
   end
 end

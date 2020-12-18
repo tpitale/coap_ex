@@ -44,6 +44,7 @@ defmodule CoAP.Transport do
   *3: RX_NON / RR_EVT(rx)
   *4: RX_RST / REMOVE_OBSERVER
   *5: RX_ACK
+  ```
 
   # Protocol stack integration
 
@@ -54,52 +55,57 @@ defmodule CoAP.Transport do
   ## Message <-> socket communication
 
   * To socket:
-    * `TX(ack)`: `{:send, %CoAP.Message{type: :ack}}`
-    * `TX(con)`: `{:send, %CoAP.Message{type: :con}}`
-    * `TX(non)`: `{:send, %CoAP.Message{type: :non}}`
+    * `TX(ack)`: `{:send, %Message{type: :ack}}`
+    * `TX(con)`: `{:send, %Message{type: :con}}`
+    * `TX(non)`: `{:send, %Message{type: :non}}`
   * From socket:
-    * `RX_RST`: `{:recv, %CoAP.Message{type: :reset}, {:inet.ip_address(), :inet.port_number()}}`
-    * `RX_ACK`: `{:recv, %CoAP.Message{type: :ack}, {:inet.ip_address(), :inet.port_number()}}`
-    * `RX_NON`: `{:recv, %CoAP.Message{type: :non}, {:inet.ip_address(), :inet.port_number()}}`
-    * `RX_CON`: `{:recv, %CoAP.Message{type: :con}, {:inet.ip_address(), :inet.port_number()}}`
+    * `RX_RST`: `{:recv, %Message{type: :reset}, peer()}`
+    * `RX_ACK`: `{:recv, %Message{type: :ack}, peer()}`
+    * `RX_NON`: `{:recv, %Message{type: :non}, peer()}`
+    * `RX_CON`: `{:recv, %Message{type: :con}, peer()}`
 
   ## Message <> Request/Response communication
 
   * to RR
-    * `RR_EVT(fail)`: `{:rr_fail, CoAP.Message.id()}`
-    * `RR_EVT(rx)`: `{:rr_rx, CoAP.Message.t()}`
+    * `RR_EVT(fail)`: `{:rr_fail, Message.id(), reason}`
+    * `RR_EVT(rx)`: `{:rr_rx, Message.t(), peer()}`
 
   * from RR
-    * `M_CMD(cancel)`: `{:cancel, CoAP.Message.id()}`
-    * `M_CMD(reliable_send): `%CoAP.Message{type: :con}`
-    * `M_CMD(unreliable_send): `%CoAP.Message{type: :non}`
-    * `M_CMD(accept): `%CoAP.Message{type: :ack}`
-  ```
+    * `M_CMD(cancel)`: `{:cancel, Message.id()}`
+    * `M_CMD(reliable_send)`: `%Message{type: :con}`
+    * `M_CMD(unreliable_send)`: `%Message{type: :non}`
+    * `M_CMD(accept)`: `%Message{type: :ack}`
+
+
   """
   use GenStateMachine
 
   alias CoAP.Message
 
   @type client() :: pid() | term()
-  @type peer() :: URI.t()
+  @type peer() :: {:inet.ip_address() | String.Chars.t(), :inet.port_number()} | URI.t()
   @type transport() :: pid()
-  @type transport_opts() :: any()
+  @type socket_opts() :: any()
   @type socket_adapter() :: module()
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
-          {:peer, {host(), integer()}}
-          | {:transport_opts, any()}
+          {:peer, peer()}
           | {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
           | {:socket_adapter, module()}
+          | {:socket_opts, any()}
+          | term()
   @type args() :: arg()
 
+  @type rr_fail_reason :: :reset | :timeout
+
   @typedoc """
-  * `:rr_fail`: transport failed, due to reset or timeout
-  * `:rr_rx`: transport received an ACK
+  * `{:rr_fail, Message.id(), rr_fail_reason()}`: transport failed, due to reset or timeout
+  * `{:rr_rx, Message.t()}`: transport received a message
   """
-  @type rr_message_content :: {:rr_fail, Message.id()} | {:rr_rx, Message.t()}
+  @type rr_message_content ::
+          {:rr_fail, Message.id(), rr_fail_reason()} | {:rr_rx, Message.t(), peer()}
 
   @typedoc """
   Messages to Request/Receive layer
@@ -109,8 +115,7 @@ defmodule CoAP.Transport do
   @typedoc """
   Messages from Socket to Transport layer
   """
-  @type socket_message ::
-          {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}} | {:send, Message.t()}
+  @type socket_message :: {:recv, Message.t(), peer()} | {:send, Message.t()}
 
   defmodule State do
     @moduledoc false
@@ -130,7 +135,7 @@ defmodule CoAP.Transport do
               retransmit_timeout: 0,
               ack_timeout: @ack_timeout,
               ack_random_factor: @ack_random_factor,
-              transport_opts: nil,
+              socket_opts: nil,
               error: nil
 
     @type t :: %__MODULE__{
@@ -144,7 +149,7 @@ defmodule CoAP.Transport do
             retransmit_timeout: integer(),
             ack_timeout: integer(),
             ack_random_factor: integer() | float(),
-            transport_opts: any(),
+            socket_opts: any(),
             error: term() | nil
           }
 
@@ -181,8 +186,9 @@ defmodule CoAP.Transport do
           :ack_timeout,
           :ack_random_factor,
           :max_retransmit,
-          :transport_opts,
-          :socket_adapter
+          :socket_opts,
+          :socket_adapter,
+          :peer
         ])
 
       s
@@ -207,11 +213,11 @@ defmodule CoAP.Transport do
     defp cast_peer(s, _args),
       do: s
 
+    defp cast_socket_init(%{socket_adapter: adapter} = s) when not is_nil(adapter),
+      do: s
+
     defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
       do: %{s | socket_adapter: CoAP.Transport.UDP}
-
-    defp cast_socket_init(%{socket_adapter: adapter} = s) when is_atom(adapter),
-      do: s
 
     defp cast_socket_init(s) do
       %{s | error: {:badarg, "Missing :peer or :socket_adapter"}}
@@ -249,7 +255,7 @@ defmodule CoAP.Transport do
   end
 
   # Socket implementation is not linked to transport process, but monitored
-  @callback start({peer(), transport(), transport_opts()}) :: GenServer.on_start()
+  @callback start({peer(), transport(), socket_opts()}) :: GenServer.on_start()
 
   @doc false
   @spec start_link(client(), args()) :: GenStateMachine.on_start()
@@ -324,16 +330,16 @@ defmodule CoAP.Transport do
   end
 
   # RX_CON
-  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     # No timeout, but RR layer should take care of ack'ing message in a
     # reasonble time
     {:next_state, {:ack_pending, mid}, s}
   end
 
   # RX_NON
-  def handle_event(:info, {:recv, %Message{type: :non} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :non} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     :keep_state_and_data
   end
 
@@ -342,8 +348,8 @@ defmodule CoAP.Transport do
     do: :keep_state_and_data
 
   # RX_RST
-  def handle_event(:info, {:recv, %Message{type: :reset} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :reset} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     :keep_state_and_data
   end
 
@@ -360,25 +366,14 @@ defmodule CoAP.Transport do
     {:keep_state_and_data, :postpone}
   end
 
-  # RX_RST
-  def handle_event(
-        :info,
-        {:recv, %Message{type: :reset, message_id: mid}},
-        {:reliable_tx, mid},
-        s
-      ) do
-    request_response_event(s, {:rr_fail, mid})
-    {:next_state, :closed, s}
-  end
-
   # RX_ACK
   def handle_event(
         :info,
-        {:recv, %Message{type: :ack, message_id: mid} = m, _from},
+        {:recv, %Message{type: :ack, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, :closed, s}
   end
 
@@ -389,29 +384,29 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_fail, mid})
+    request_response_event(s, {:rr_fail, mid, :reset})
     {:next_state, :closed, s}
   end
 
   # RX_NON
   def handle_event(
         :info,
-        {:recv, %Message{type: :non, message_id: mid} = m, _from},
+        {:recv, %Message{type: :non, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, :closed, s}
   end
 
   # RX_CON
   def handle_event(
         :info,
-        {:recv, %Message{type: :con, message_id: mid} = m, _from},
+        {:recv, %Message{type: :con, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, {:ack_pending, mid}, s}
   end
 
@@ -430,7 +425,7 @@ defmodule CoAP.Transport do
           max_retransmit: max_retransmit
         } = s
       ) do
-    request_response_event(s, {:rr_fail, mid})
+    request_response_event(s, {:rr_fail, mid, :timeout})
     {:next_state, :closed, s}
   end
 
@@ -471,7 +466,7 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp open_socket(%{socket_adapter: adapter, peer: uri, transport_opts: opts} = s) do
+  defp open_socket(%{socket_adapter: adapter, peer: uri, socket_opts: opts} = s) do
     case apply(adapter, :start, [{uri, self(), opts}]) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
