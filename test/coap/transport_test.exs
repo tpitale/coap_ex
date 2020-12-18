@@ -26,7 +26,7 @@ defmodule CoAP.TransportTest do
           ) do
       send(t, {:recv, con, from})
 
-      assert_receive {^t, {:rr_rx, ^con}}
+      assert_receive {:rr_rx, ^con}
       assert {:ack_pending, ^id} = state_name(t)
 
       send(t, :reset)
@@ -55,7 +55,7 @@ defmodule CoAP.TransportTest do
           ) do
       send(t, {:recv, non, from})
 
-      assert_receive {^t, {:rr_rx, ^non}}
+      assert_receive {:rr_rx, ^non}
       assert :closed = state_name(t)
     end
   end
@@ -68,7 +68,7 @@ defmodule CoAP.TransportTest do
             from <- inet_peer()
           ) do
       send(t, {:recv, rst, from})
-      assert_receive {^t, {:rr_rx, ^rst}}
+      assert_receive {:rr_rx, ^rst}
       assert :closed = state_name(t)
     end
   end
@@ -99,7 +99,7 @@ defmodule CoAP.TransportTest do
       assert {:reliable_tx, ^mid} = state_name(t)
 
       send(t, {:recv, rst, from})
-      assert_receive {^t, :rr_fail}
+      assert_receive {:rr_fail, ^mid}
       assert :closed = state_name(t)
     end
   end
@@ -112,7 +112,7 @@ defmodule CoAP.TransportTest do
       send(t, con)
       assert {:reliable_tx, ^mid} = state_name(t)
 
-      send(t, :cancel)
+      send(t, {:cancel, mid})
       assert :closed = state_name(t)
     end
   end
@@ -130,7 +130,7 @@ defmodule CoAP.TransportTest do
       assert {:reliable_tx, ^mid} = state_name(t)
 
       send(t, {:recv, ack, from})
-      assert_receive {^t, {:rr_rx, ^ack}}
+      assert_receive {:rr_rx, ^ack}
       assert :closed = state_name(t)
     end
   end
@@ -148,7 +148,7 @@ defmodule CoAP.TransportTest do
       assert {:reliable_tx, ^mid} = state_name(t)
 
       send(t, {:recv, non, from})
-      assert_receive {^t, {:rr_rx, ^non}}
+      assert_receive {:rr_rx, ^non}
       assert :closed = state_name(t)
     end
   end
@@ -166,7 +166,7 @@ defmodule CoAP.TransportTest do
       assert {:reliable_tx, ^mid} = state_name(t)
 
       send(t, {:recv, con2, from})
-      assert_receive {^t, {:rr_rx, ^con2}}
+      assert_receive {:rr_rx, ^con2}
       assert {:ack_pending, ^mid} = state_name(t)
 
       send(t, :reset)
@@ -190,7 +190,7 @@ defmodule CoAP.TransportTest do
         assert_received {:send, ^con}
       end
 
-      assert_receive {^t, :rr_fail}
+      assert_receive {:rr_fail, _}
 
       Transport.stop(t)
     end
@@ -216,7 +216,7 @@ defmodule CoAP.TransportTest do
       # Send ACK
       send(t, {:recv, ack, from})
 
-      assert_receive {^t, {:rr_rx, ^ack}}
+      assert_receive {:rr_rx, ^ack}
       assert :closed = state_name(t)
 
       send(t, :reset)

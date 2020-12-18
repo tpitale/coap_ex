@@ -60,6 +60,7 @@ defmodule CoAP.Message do
   }
   @methods_map Enum.into(@methods, %{}, fn {k, v} -> {v, k} end)
 
+  @type id :: integer()
   @type request_method :: :get | :post | :put | :delete
   @type status_code :: {integer, integer}
   @type status_t :: nil | {atom, atom}
@@ -74,7 +75,7 @@ defmodule CoAP.Message do
           code_detail: integer,
           method: request_method | nil | {integer, integer},
           status: status_t,
-          message_id: integer,
+          message_id: id,
           token: binary,
           options: map,
           multipart: CoAP.Multipart.t() | nil,

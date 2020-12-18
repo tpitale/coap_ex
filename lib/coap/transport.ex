@@ -1,6 +1,13 @@
 defmodule CoAP.Transport do
   @moduledoc """
-  Implements CoAP message layer
+  Implements CoAP Message layer.
+
+  CoAP has been designed for using datagram-oriented, unreliable transport, like
+  UDP. A lightweight reliability layer is described in CoAP specification and
+  called "Message layer".
+
+  This module implements the "Message layer" FSM and delegates socket
+  communication to separate modules.
 
   # Message layer FSM
 
@@ -37,6 +44,36 @@ defmodule CoAP.Transport do
   *3: RX_NON / RR_EVT(rx)
   *4: RX_RST / REMOVE_OBSERVER
   *5: RX_ACK
+
+  # Protocol stack integration
+
+  CoAP Message layer communicates with:
+  * lower socket layer, like UDP, DTLS or even a reliable one like websocket;
+  * higher request/response layer, as client or server.
+
+  ## Message <-> socket communication
+
+  * To socket:
+    * `TX(ack)`: `{:send, %CoAP.Message{type: :ack}}`
+    * `TX(con)`: `{:send, %CoAP.Message{type: :con}}`
+    * `TX(non)`: `{:send, %CoAP.Message{type: :non}}`
+  * From socket:
+    * `RX_RST`: `{:recv, %CoAP.Message{type: :reset}, {:inet.ip_address(), :inet.port_number()}}`
+    * `RX_ACK`: `{:recv, %CoAP.Message{type: :ack}, {:inet.ip_address(), :inet.port_number()}}`
+    * `RX_NON`: `{:recv, %CoAP.Message{type: :non}, {:inet.ip_address(), :inet.port_number()}}`
+    * `RX_CON`: `{:recv, %CoAP.Message{type: :con}, {:inet.ip_address(), :inet.port_number()}}`
+
+  ## Message <> Request/Response communication
+
+  * to RR
+    * `RR_EVT(fail)`: `{:rr_fail, CoAP.Message.id()}`
+    * `RR_EVT(rx)`: `{:rr_rx, CoAP.Message.t()}`
+
+  * from RR
+    * `M_CMD(cancel)`: `{:cancel, CoAP.Message.id()}`
+    * `M_CMD(reliable_send): `%CoAP.Message{type: :con}`
+    * `M_CMD(unreliable_send): `%CoAP.Message{type: :non}`
+    * `M_CMD(accept): `%CoAP.Message{type: :ack}`
   ```
   """
   use GenStateMachine
@@ -60,11 +97,10 @@ defmodule CoAP.Transport do
   @type args() :: arg()
 
   @typedoc """
-  * `:rr_cancel`: transport received a cancel event
   * `:rr_fail`: transport failed, due to reset or timeout
   * `:rr_rx`: transport received an ACK
   """
-  @type rr_message_content :: :rr_cancel | :rr_fail | {:rr_rx, Message.t()}
+  @type rr_message_content :: {:rr_fail, Message.id()} | {:rr_rx, Message.t()}
 
   @typedoc """
   Messages to Request/Receive layer
@@ -74,7 +110,8 @@ defmodule CoAP.Transport do
   @typedoc """
   Messages from Socket to Transport layer
   """
-  @type socket_message :: {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}}
+  @type socket_message ::
+          {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}} | {:send, Message.t()}
 
   defmodule State do
     @moduledoc false
@@ -316,7 +353,7 @@ defmodule CoAP.Transport do
   #
 
   # M_CMD[cancel]
-  def handle_event(:info, :cancel, {:reliable_tx, _}, s),
+  def handle_event(:info, {:cancel, mid}, {:reliable_tx, mid}, s),
     do: {:next_state, :closed, s}
 
   # M_CMD[reliable_send] - non matching
@@ -331,7 +368,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, :rr_fail)
+    request_response_event(s, {:rr_fail, mid})
     {:next_state, :closed, s}
   end
 
@@ -353,7 +390,7 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, :rr_fail)
+    request_response_event(s, {:rr_fail, mid})
     {:next_state, :closed, s}
   end
 
@@ -394,7 +431,7 @@ defmodule CoAP.Transport do
           max_retransmit: max_retransmit
         } = s
       ) do
-    request_response_event(s, :rr_fail)
+    request_response_event(s, {:rr_fail, mid})
     {:next_state, :closed, s}
   end
 
@@ -451,6 +488,6 @@ defmodule CoAP.Transport do
   end
 
   defp request_response_event(%State{client: client}, evt) do
-    send(client, {self(), evt})
+    send(client, evt)
   end
 end
