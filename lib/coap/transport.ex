@@ -84,8 +84,7 @@ defmodule CoAP.Transport do
   @type peer() :: URI.t()
   @type transport() :: pid()
   @type transport_opts() :: any()
-  @type socket_init() ::
-          ({peer(), transport(), transport_opts()} -> {:ok, pid()} | {:error, term()})
+  @type socket_adapter() :: module()
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
           {:peer, {host(), integer()}}
@@ -93,7 +92,7 @@ defmodule CoAP.Transport do
           | {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
-          | {:socket_init, socket_init()}
+          | {:socket_adapter, module()}
   @type args() :: arg()
 
   @typedoc """
@@ -124,7 +123,7 @@ defmodule CoAP.Transport do
     defstruct client: nil,
               socket: nil,
               socket_ref: nil,
-              socket_init: nil,
+              socket_adapter: nil,
               peer: nil,
               retries: 0,
               max_retransmit: @max_retransmit,
@@ -138,7 +137,7 @@ defmodule CoAP.Transport do
             client: Transport.client() | nil,
             socket: pid() | nil,
             socket_ref: reference() | nil,
-            socket_init: Transport.socket_init() | nil,
+            socket_adapter: module() | nil,
             peer: %URI{} | nil,
             retries: integer(),
             max_retransmit: integer(),
@@ -183,7 +182,7 @@ defmodule CoAP.Transport do
           :ack_random_factor,
           :max_retransmit,
           :transport_opts,
-          :socket_init
+          :socket_adapter
         ])
 
       s
@@ -209,13 +208,13 @@ defmodule CoAP.Transport do
       do: s
 
     defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
-      do: %{s | socket_init: &CoAP.Transport.UDP.start/1}
+      do: %{s | socket_adapter: CoAP.Transport.UDP}
 
-    defp cast_socket_init(%{socket_init: init} = s) when is_function(init, 1),
+    defp cast_socket_init(%{socket_adapter: adapter} = s) when is_atom(adapter),
       do: s
 
     defp cast_socket_init(s) do
-      %{s | error: {:badarg, "Missing :peer or :socket_init"}}
+      %{s | error: {:badarg, "Missing :peer or :socket_adapter"}}
     end
 
     defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
@@ -472,8 +471,8 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp open_socket(%{socket_init: init, peer: uri, transport_opts: opts} = s) do
-    case init.({uri, self(), opts}) do
+  defp open_socket(%{socket_adapter: adapter, peer: uri, transport_opts: opts} = s) do
+    case apply(adapter, :start, [{uri, self(), opts}]) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
         %{s | socket: pid, socket_ref: ref}
