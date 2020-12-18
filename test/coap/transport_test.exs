@@ -181,7 +181,7 @@ defmodule CoAP.TransportTest do
             max_runs: 5
           ) do
       t = start_transport(ack_timeout: ack_timeout, max_retransmit: max_retransmit)
-      retx_timeout = Transport.__max_transmit_wait__(ack_timeout, max_retransmit)
+      retx_timeout = Transport.State.__max_transmit_wait__(ack_timeout, max_retransmit)
 
       send(t, con)
       :timer.sleep(retx_timeout)
@@ -247,7 +247,7 @@ defmodule CoAP.TransportTest do
             ack_timeout <- positive_integer(),
             ack_random_factor <- float(min: 1.0, max: 2.0)
           ) do
-      timeout = Transport.__retransmit_timeout__(ack_timeout, ack_random_factor)
+      timeout = Transport.State.__retransmit_timeout__(ack_timeout, ack_random_factor)
 
       assert timeout >= ack_timeout
       assert timeout <= round(ack_timeout * ack_random_factor)

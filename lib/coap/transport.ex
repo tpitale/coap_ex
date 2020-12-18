@@ -43,10 +43,6 @@ defmodule CoAP.Transport do
 
   alias CoAP.Message
 
-  @ack_timeout 2_000
-  @ack_random_factor 1.5
-  @max_retransmit 4
-
   @type client() :: pid() | term()
   @type peer() :: URI.t()
   @type transport() :: pid()
@@ -80,33 +76,141 @@ defmodule CoAP.Transport do
   """
   @type socket_message :: {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}}
 
-  defstruct client: nil,
-            socket: nil,
-            socket_ref: nil,
-            socket_init: nil,
-            peer: nil,
-            retries: 0,
-            max_retransmit: @max_retransmit,
-            retransmit_timeout: 0,
-            ack_timeout: @ack_timeout,
-            ack_random_factor: @ack_random_factor,
-            transport_opts: nil,
-            error: nil
+  defmodule State do
+    @moduledoc false
+    alias CoAP.Transport
 
-  @type t :: %__MODULE__{
-          client: client() | nil,
-          socket: pid() | nil,
-          socket_ref: reference() | nil,
-          socket_init: socket_init() | nil,
-          peer: %URI{} | nil,
-          retries: integer(),
-          max_retransmit: integer(),
-          retransmit_timeout: integer(),
-          ack_timeout: integer(),
-          ack_random_factor: integer() | float(),
-          transport_opts: any(),
-          error: term() | nil
-        }
+    @ack_timeout 2_000
+    @ack_random_factor 1.5
+    @max_retransmit 4
+
+    defstruct client: nil,
+              socket: nil,
+              socket_ref: nil,
+              socket_init: nil,
+              peer: nil,
+              retries: 0,
+              max_retransmit: @max_retransmit,
+              retransmit_timeout: 0,
+              ack_timeout: @ack_timeout,
+              ack_random_factor: @ack_random_factor,
+              transport_opts: nil,
+              error: nil
+
+    @type t :: %__MODULE__{
+            client: Transport.client() | nil,
+            socket: pid() | nil,
+            socket_ref: reference() | nil,
+            socket_init: Transport.socket_init() | nil,
+            peer: %URI{} | nil,
+            retries: integer(),
+            max_retransmit: integer(),
+            retransmit_timeout: integer(),
+            ack_timeout: integer(),
+            ack_random_factor: integer() | float(),
+            transport_opts: any(),
+            error: term() | nil
+          }
+
+    @doc false
+    # Initialize state with given arguments
+    def init(client, args) do
+      args = Enum.into(args, %{})
+
+      %__MODULE__{client: client}
+      |> init_state(args)
+      |> when_valid?(&cast_peer(&1, args))
+      |> when_valid?(&cast_socket_init/1)
+    end
+
+    @doc false
+    def reset(%__MODULE__{} = s) do
+      fill_retransmit_timeout(%{s | retries: 0})
+    end
+
+    @doc false
+    def when_valid?(%__MODULE__{error: nil} = state, fun),
+      do: fun.(state)
+
+    @doc false
+    def when_valid?(s, _), do: s
+
+    @doc false
+    def default_ack_random_factor, do: @ack_random_factor
+
+    defp init_state(s, args) do
+      options =
+        args
+        |> Map.take([
+          :ack_timeout,
+          :ack_random_factor,
+          :max_retransmit,
+          :transport_opts,
+          :socket_init
+        ])
+
+      s
+      |> Map.merge(options, fn
+        _key, v1, nil -> v1
+        _key, _v1, v2 -> v2
+      end)
+      |> fill_retransmit_timeout()
+      |> validate_ack_random_factor()
+    end
+
+    defp cast_peer(s, %{peer: {{a, b, c, d}, port}}) do
+      uri = %URI{scheme: "coap", host: "#{a}.#{b}.#{c}.#{d}", port: port}
+      %{s | peer: uri}
+    end
+
+    defp cast_peer(s, %{peer: {host, port}}) do
+      uri = %URI{scheme: "coap", host: "#{host}", port: port}
+      %{s | peer: uri}
+    end
+
+    defp cast_peer(s, _args),
+      do: s
+
+    defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
+      do: %{s | socket_init: &CoAP.Transport.UDP.start/1}
+
+    defp cast_socket_init(%{socket_init: init} = s) when is_function(init, 1),
+      do: s
+
+    defp cast_socket_init(s) do
+      %{s | error: {:badarg, "Missing :peer or :socket_init"}}
+    end
+
+    defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
+         when is_float(factor) and factor >= 1.0,
+         do: s
+
+    defp validate_ack_random_factor(s),
+      do: %{s | error: {:badarg, :ack_random_factor, s.ack_random_factor}}
+
+    defp fill_retransmit_timeout(s) do
+      %{
+        s
+        | retransmit_timeout: __retransmit_timeout__(s.ack_timeout, s.ack_random_factor)
+      }
+    end
+
+    def __max_transmit_wait__(
+          ack_timeout,
+          max_retransmit,
+          ack_random_factor \\ State.default_ack_random_factor()
+        ) do
+      round(ack_timeout * (:math.pow(2, max_retransmit + 1) - 1) * ack_random_factor)
+    end
+
+    def __retransmit_timeout__(
+          ack_timeout,
+          ack_random_factor \\ State.default_ack_random_factor()
+        ) do
+      random = :rand.uniform() * ack_timeout * (ack_random_factor - 1)
+      round(ack_timeout + random)
+    end
+  end
 
   # Socket implementation is not linked to transport process, but monitored
   @callback start({peer(), transport(), transport_opts()}) :: GenServer.on_start()
@@ -128,28 +232,19 @@ defmodule CoAP.Transport do
 
   @impl GenStateMachine
   def init({client, args}) do
-    args = Enum.into(args, %{})
-
-    %__MODULE__{client: client}
-    |> init_state(args)
-    |> when_valid?(&cast_peer(&1, args))
-    |> when_valid?(&cast_socket_init/1)
-    |> when_valid?(&open_socket/1)
+    client
+    |> State.init(args)
+    |> State.when_valid?(&open_socket/1)
     |> case do
-      %__MODULE__{error: nil} = s ->
-        {:ok, :closed, s}
-
-      %__MODULE__{error: reason} ->
-        {:stop, reason}
+      %State{error: nil} = s -> {:ok, :closed, s}
+      %State{error: reason} -> {:stop, reason}
     end
   end
 
   @impl GenStateMachine
   # For tests/debugging purpose
-  def handle_event(:info, :reset, _, s) do
-    s = fill_retransmit_timeout(%{s | retries: 0})
-    {:next_state, :closed, s}
-  end
+  def handle_event(:info, :reset, _, s),
+    do: {:next_state, :closed, State.reset(s)}
 
   def handle_event({:call, from}, :state_name, state_name, _s),
     do: {:keep_state_and_data, {:reply, from, state_name}}
@@ -162,17 +257,14 @@ defmodule CoAP.Transport do
   def handle_event(
         :info,
         {:DOWN, ref, :process, _socket, _reason},
-        _,
-        %__MODULE__{socket_ref: ref} = s
+        _state_name,
+        %State{socket_ref: ref} = s
       ) do
     s
     |> open_socket()
     |> case do
-      %__MODULE__{error: nil} ->
-        {:keep_state, s}
-
-      %__MODULE__{error: reason} ->
-        {:stop, {:socket, reason}, %{s | socket: nil}}
+      %State{error: nil} -> {:keep_state, s}
+      %State{error: reason} -> {:stop, {:socket, reason}, %{s | socket: nil}}
     end
   end
 
@@ -297,7 +389,7 @@ defmodule CoAP.Transport do
         :state_timeout,
         %Message{type: :con, message_id: mid},
         {:reliable_tx, mid},
-        %__MODULE__{
+        %State{
           retries: max_retransmit,
           max_retransmit: max_retransmit
         } = s
@@ -343,54 +435,6 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp when_valid?(%__MODULE__{error: nil} = state, fun),
-    do: fun.(state)
-
-  defp when_valid?(s, _), do: s
-
-  defp init_state(s, args) do
-    options =
-      args
-      |> Map.take([
-        :ack_timeout,
-        :ack_random_factor,
-        :max_retransmit,
-        :transport_opts,
-        :socket_init
-      ])
-
-    s
-    |> Map.merge(options, fn
-      _key, v1, nil -> v1
-      _key, _v1, v2 -> v2
-    end)
-    |> fill_retransmit_timeout()
-    |> validate_ack_random_factor()
-  end
-
-  defp cast_peer(s, %{peer: {{a, b, c, d}, port}}) do
-    uri = %URI{scheme: "coap", host: "#{a}.#{b}.#{c}.#{d}", port: port}
-    %{s | peer: uri}
-  end
-
-  defp cast_peer(s, %{peer: {host, port}}) do
-    uri = %URI{scheme: "coap", host: "#{host}", port: port}
-    %{s | peer: uri}
-  end
-
-  defp cast_peer(s, _args),
-    do: s
-
-  defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
-    do: %{s | socket_init: &CoAP.Transport.UDP.start/1}
-
-  defp cast_socket_init(%{socket_init: init} = s) when is_function(init, 1),
-    do: s
-
-  defp cast_socket_init(s) do
-    %{s | error: {:badarg, "Missing :peer or :socket_init"}}
-  end
-
   defp open_socket(%{socket_init: init, peer: uri, transport_opts: opts} = s) do
     case init.({uri, self(), opts}) do
       {:ok, pid} ->
@@ -402,31 +446,11 @@ defmodule CoAP.Transport do
     end
   end
 
-  defp fill_retransmit_timeout(s) do
-    %{s | retransmit_timeout: __retransmit_timeout__(s.ack_timeout, s.ack_random_factor)}
-  end
-
-  defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
-       when is_float(factor) and factor >= 1.0,
-       do: s
-
-  defp validate_ack_random_factor(s),
-    do: %{s | error: {:badarg, :ack_random_factor, s.ack_random_factor}}
-
-  def __max_transmit_wait__(ack_timeout, max_retransmit, ack_random_factor \\ @ack_random_factor) do
-    round(ack_timeout * (:math.pow(2, max_retransmit + 1) - 1) * ack_random_factor)
-  end
-
-  def __retransmit_timeout__(ack_timeout, ack_random_factor \\ @ack_random_factor) do
-    random = :rand.uniform() * ack_timeout * (ack_random_factor - 1)
-    round(ack_timeout + random)
-  end
-
-  defp tx(%__MODULE__{socket: socket}, m) do
+  defp tx(%State{socket: socket}, m) do
     send(socket, {:send, m})
   end
 
-  defp rr_evt(%__MODULE__{client: client}, evt) do
+  defp rr_evt(%State{client: client}, evt) do
     send(client, {self(), evt})
   end
 end
