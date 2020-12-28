@@ -74,6 +74,11 @@ Simple client usage:
 CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 ```
 
+## Options
+
+Client behaviour can be customized through options. See `CoAP.Client`
+documentation for possible options.
+
 # Telemetry #
 
 Coap_ex emits telemetry events for data sent and received, block transfers, and other connection-releated events.  To consume them, attach a handler in your app startup like so:
