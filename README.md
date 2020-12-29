@@ -107,11 +107,9 @@ To tag a client connection, pass a tag in the request options:
 
 ```
 CoAP.Client.request(
-  :con,
   method,
-  url,
-  request_payload,
-  %{retries: retries, timeout: @wait_timeout, ack_timeout: timeout, tag: tag}
+  {url, [], payload},
+  %{max_retransmit: retries, timeout: @wait_timeout, tag: tag}
 )
  ```
  

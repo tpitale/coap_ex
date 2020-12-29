@@ -2,6 +2,7 @@ defmodule CoAP.Client do
   @moduledoc """
   CoAP Client interface
   """
+  alias CoAP.Client.Request
   alias CoAP.Message
   alias CoAP.Transport
 
@@ -30,8 +31,11 @@ defmodule CoAP.Client do
   * `confirmable`: if true, request is confirmable
   """
   @type options :: [option()]
-  @type request_url :: binary
-  @type request_method :: :get | :post | :put | :delete
+  @type method :: :get | :post | :put | :delete
+  @type coap_options() :: Enumerable.t()
+  @type payload() :: binary()
+  @type url() :: binary()
+  @type request() :: url() | {url(), coap_options()}
   @type response_error :: {:timeout, :await_response} | any
   @type response :: Message.t() | {:error, response_error}
 
@@ -41,8 +45,8 @@ defmodule CoAP.Client do
 
   CoAP.Client.get("coap://localhost:5683/api/")
   """
-  @spec get(request_url, options) :: response
-  def get(url, options \\ []), do: request(:get, url, <<>>, options)
+  @spec get(request(), options) :: response
+  def get(req, options \\ []), do: request(:get, req, options)
 
   @doc """
   Perform POST request to a URL
@@ -51,8 +55,14 @@ defmodule CoAP.Client do
 
   CoAP.Client.post("coap://localhost:5683/api/", <<0x00, 0x01, …>>)
   """
-  @spec post(request_url, binary, options) :: response
-  def post(url, content \\ <<>>, options), do: request(:post, url, content, options)
+  @spec post(request(), payload(), options) :: response
+  def post(req, content \\ <<>>, options \\ [])
+
+  def post(req, content, options) when is_binary(req),
+    do: request(:post, {req, [], content}, options)
+
+  def post({url, coap_options}, content, options),
+    do: request(:post, {url, coap_options, content}, options)
 
   @doc """
   Perform PUT request to a URL
@@ -61,8 +71,14 @@ defmodule CoAP.Client do
 
   CoAP.Client.put("coap://localhost:5683/api/", "somepayload")
   """
-  @spec put(request_url, binary, options) :: response
-  def put(url, content \\ <<>>, options \\ []), do: request(:put, url, content, options)
+  @spec put(request(), payload(), options) :: response
+  def put(req, content \\ <<>>, options \\ [])
+
+  def put(req, content, options) when is_binary(req),
+    do: request(:put, {req, [], content}, options)
+
+  def put({url, coap_options}, content, options),
+    do: request(:put, {url, coap_options, content}, options)
 
   @doc """
   Perform a DELETE request to a URL
@@ -70,35 +86,24 @@ defmodule CoAP.Client do
 
   CoAP.Client.delete("coap://localhost:5683/api/")
   """
-  @spec delete(request_url, options) :: response
-  def delete(url, options \\ []), do: request(:delete, url, <<>>, options)
+  @spec delete(request(), options) :: response
+  def delete(req, options \\ [])
+
+  def delete(req, options) when is_binary(req),
+    do: request(:delete, {req, []}, options)
+
+  def delete({url, coap_options}, options),
+    do: request(:delete, {url, coap_options}, options)
 
   @doc """
   Perform a request
 
-  Accepts 3-5 arguments:
-  * method: 1 of :get, :post, :put :delete
-  * url: binary, parseable by `URI.parse()`
-  * content (optional): a binary payload
-  * options (optional): see `options()` typespec
-
   Returns response message or error tuple
   """
-  @spec request(request_method, request_url, binary, options) :: response
-  def request(method, url, content \\ <<>>, options \\ []) do
-    uri = URI.parse(url)
-    {code_class, code_detail} = Message.encode_method(method)
-
-    message = %Message{
-      request: true,
-      type: if(Keyword.get(options, :confirmable, true), do: :con, else: :non),
-      method: method,
-      token: :crypto.strong_rand_bytes(4),
-      code_class: code_class,
-      code_detail: code_detail,
-      payload: content,
-      options: %{uri_path: String.split(uri.path, "/")}
-    }
+  @spec request(method, Request.t(), options) :: response
+  def request(method, request, options \\ []) do
+    {:ok, {uri, message}} =
+      Request.build(method, request, Keyword.get(options, :confirmable, true))
 
     fn -> do_request(uri, message, options) end
     |> Task.async()

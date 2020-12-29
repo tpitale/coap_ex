@@ -10,13 +10,13 @@ defmodule CoAP.ClientTest do
   test "get - confirmable, piggybacked response" do
     server = fn
       %Message{type: :con, code_class: 0, code_detail: 1} = m, cb ->
-        cb.(%Message{m | type: :ack, code_class: 2, code_detail: 3, payload: <<"response">>})
+        cb.(%Message{m | type: :ack, code_class: 2, code_detail: 5, payload: <<"response">>})
     end
 
     response =
       Client.get("coap://example.org/api", socket_adapter: LocalAdapter, socket_opts: server)
 
-    assert %Message{code_class: 2, code_detail: 3, payload: <<"response">>} = response
+    assert %Message{code_class: 2, code_detail: 5, payload: <<"response">>} = response
   end
 
   test "get - confirmable, separate con response" do
@@ -24,13 +24,13 @@ defmodule CoAP.ClientTest do
       %Message{type: :con, code_class: 0, code_detail: 1} = m, cb ->
         cb.(%Message{m | type: :ack, payload: <<>>})
         :timer.sleep(100)
-        cb.(%Message{m | type: :con, code_class: 2, code_detail: 3, payload: <<"response">>})
+        cb.(%Message{m | type: :con, code_class: 2, code_detail: 5, payload: <<"response">>})
     end
 
     response =
       Client.get("coap://example.org/api", socket_adapter: LocalAdapter, socket_opts: server)
 
-    assert %Message{code_class: 2, code_detail: 3, payload: <<"response">>} = response
+    assert %Message{code_class: 2, code_detail: 5, payload: <<"response">>} = response
   end
 
   test "get - confirmable, separate non response" do
@@ -38,29 +38,29 @@ defmodule CoAP.ClientTest do
       %Message{type: :con, code_class: 0, code_detail: 1} = m, cb ->
         cb.(%Message{m | type: :ack, payload: <<>>})
         :timer.sleep(100)
-        cb.(%Message{m | type: :non, code_class: 2, code_detail: 3, payload: <<"response">>})
+        cb.(%Message{m | type: :non, code_class: 2, code_detail: 5, payload: <<"response">>})
     end
 
     response =
       Client.get("coap://example.org/api", socket_adapter: LocalAdapter, socket_opts: server)
 
-    assert %Message{code_class: 2, code_detail: 3, payload: <<"response">>} = response
+    assert %Message{code_class: 2, code_detail: 5, payload: <<"response">>} = response
   end
 
   test "get - non confirmable" do
     server = fn
       %Message{type: :non, code_class: 0, code_detail: 1} = m, cb ->
-        cb.(%Message{m | type: :non, code_class: 2, code_detail: 3, payload: <<"response">>})
+        cb.(%Message{m | type: :non, code_class: 2, code_detail: 5, payload: <<"response">>})
     end
 
     response =
-      Client.request(:get, "coap://example.org/api", <<>>,
+      Client.request(:get, "coap://example.org/api",
         confirmable: false,
         socket_adapter: LocalAdapter,
         socket_opts: server
       )
 
-    assert %Message{code_class: 2, code_detail: 3, payload: <<"response">>} = response
+    assert %Message{code_class: 2, code_detail: 5, payload: <<"response">>} = response
   end
 
   test "get - confirmable, separate response, timeout" do
@@ -96,7 +96,7 @@ defmodule CoAP.ClientTest do
     server = fn _, _ -> :ok end
 
     response =
-      Client.request(:get, "coap://example.org/api", <<>>,
+      Client.request(:get, "coap://example.org/api",
         timeout: 100,
         confirmable: false,
         socket_adapter: LocalAdapter,
@@ -110,13 +110,13 @@ defmodule CoAP.ClientTest do
     check all(response_payload <- binary(length: 1024)) do
       server = fn
         %Message{type: :con, code_class: 0, code_detail: 1} = m, cb ->
-          cb.(%Message{m | type: :ack, code_class: 2, code_detail: 3, payload: response_payload})
+          cb.(%Message{m | type: :ack, code_class: 2, code_detail: 5, payload: response_payload})
       end
 
       response =
         Client.get("coap://example.org/api", socket_adapter: LocalAdapter, socket_opts: server)
 
-      assert %Message{code_class: 2, code_detail: 3, payload: payload} = response
+      assert %Message{code_class: 2, code_detail: 5, payload: payload} = response
       assert 1024 == byte_size(payload)
     end
   end

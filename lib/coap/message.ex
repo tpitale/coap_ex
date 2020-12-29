@@ -164,14 +164,6 @@ defmodule CoAP.Message do
     >>
   end
 
-  # Encode a request type (con/non/ack/reset) for binary message use
-  @spec encode_type(request_type()) :: integer
-  defp encode_type(type) when is_atom(type), do: @types_map[type]
-
-  # Decode a binary message into its request type (con/non/ack/reset)
-  @spec decode_type(integer) :: request_type()
-  defp decode_type(type) when is_integer(type), do: @types[type]
-
   @doc """
   Decode binary coap message into a struct
 
@@ -324,21 +316,6 @@ defmodule CoAP.Message do
     Multipart.build(request, options[:block1], options[:block2])
   end
 
-  @spec request?(any) :: boolean
-  defp request?(0), do: true
-
-  defp request?(_), do: false
-
-  @spec method_for(any, any) :: request_method() | nil
-  defp method_for(0, code_detail), do: @methods[{0, code_detail}]
-
-  defp method_for(_code_class, _code_detail), do: nil
-
-  @spec status_for(integer, any) :: nil | status_t
-  defp status_for(0, _code_detail), do: nil
-
-  defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
-
   @doc """
   Update a Message with the next_message_id
   Ignore fields that should not be carried forward
@@ -437,4 +414,30 @@ defmodule CoAP.Message do
   def response_for(method, payload, message) do
     %__MODULE__{response_for(message) | method: method, payload: payload}
   end
+
+  ###
+  ### Priv
+  ###
+  # Encode a request type (con/non/ack/reset) for binary message use
+  @spec encode_type(request_type()) :: integer
+  defp encode_type(type) when is_atom(type), do: @types_map[type]
+
+  # Decode a binary message into its request type (con/non/ack/reset)
+  @spec decode_type(integer) :: request_type()
+  defp decode_type(type) when is_integer(type), do: @types[type]
+
+  @spec request?(any) :: boolean
+  defp request?(0), do: true
+
+  defp request?(_), do: false
+
+  @spec method_for(any, any) :: request_method() | nil
+  defp method_for(0, code_detail), do: @methods[{0, code_detail}]
+
+  defp method_for(_code_class, _code_detail), do: nil
+
+  @spec status_for(integer, any) :: nil | status_t
+  defp status_for(0, _code_detail), do: nil
+
+  defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
 end
