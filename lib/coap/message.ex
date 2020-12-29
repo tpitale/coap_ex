@@ -286,7 +286,7 @@ defmodule CoAP.Message do
       {2, 31}
 
   """
-  @spec encode_method(request_method() | status_t()) :: {integer, integer}
+  @spec encode_method(request_method() | status_t()) :: {integer, integer} | nil
   def encode_method(method), do: @methods_map[method]
 
   @doc """
