@@ -54,8 +54,12 @@ defmodule CoAP.Client.RequestTest do
   describe "uri-path option" do
     property "non-empty path" do
       check all(
-        fragments <- list_of(string(:alphanumeric, min_length: 1, max_length: 255), min_length: 1, max_length: 255)
-      ) do
+              fragments <-
+                list_of(string(:alphanumeric, min_length: 1, max_length: 255),
+                  min_length: 1,
+                  max_length: 255
+                )
+            ) do
         path = Enum.join(fragments, "/")
         {:ok, {_uri, m}} = Request.build(:get, "coap://example.org:8080/#{path}")
         assert %{uri_path: ^fragments} = m.options
@@ -70,6 +74,18 @@ defmodule CoAP.Client.RequestTest do
     test "trimmed empty path" do
       {:ok, {_uri, m}} = Request.build(:get, "coap://example.org:8080///")
       refute Map.has_key?(m.options, :uri_path)
+    end
+  end
+
+  describe "request errors" do
+    test "uri error" do
+      ret = Request.build(:get, {:not_a_string, []})
+      assert {:error, ["invalid url"]} = ret
+    end
+
+    test "missing protocol" do
+      ret = Request.build(:get, "example.org")
+      assert {:error, ["missing protocol"]} = ret
     end
   end
 end
