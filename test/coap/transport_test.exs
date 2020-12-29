@@ -256,7 +256,7 @@ defmodule CoAP.TransportTest do
 
   defp start_transport(options \\ []) do
     args = Keyword.merge([socket_adapter: Socket, socket_opts: self()], options)
-    {:ok, t} = Transport.start(self(), args)
+    {:ok, t} = Transport.start({"example.org", 8080}, self(), args)
 
     t
   end

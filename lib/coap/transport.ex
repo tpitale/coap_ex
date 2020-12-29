@@ -83,14 +83,13 @@ defmodule CoAP.Transport do
   alias CoAP.Message
 
   @type client() :: pid() | term()
-  @type peer() :: {:inet.ip_address() | String.Chars.t(), :inet.port_number()} | URI.t()
+  @type peer() :: {binary(), :inet.port_number()}
   @type transport() :: pid()
   @type socket_opts() :: any()
   @type socket_adapter() :: module()
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
-          {:peer, peer()}
-          | {:max_retransmit, integer()}
+          {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
           | {:socket_adapter, module()}
@@ -128,7 +127,7 @@ defmodule CoAP.Transport do
     defstruct client: nil,
               socket: nil,
               socket_ref: nil,
-              socket_adapter: nil,
+              socket_adapter: CoAP.Transport.UDP,
               peer: nil,
               retries: 0,
               max_retransmit: @max_retransmit,
@@ -143,7 +142,7 @@ defmodule CoAP.Transport do
             socket: pid() | nil,
             socket_ref: reference() | nil,
             socket_adapter: module() | nil,
-            peer: %URI{} | nil,
+            peer: Transport.peer() | nil,
             retries: integer(),
             max_retransmit: integer(),
             retransmit_timeout: integer(),
@@ -155,13 +154,13 @@ defmodule CoAP.Transport do
 
     @doc false
     # Initialize state with given arguments
-    def init(client, args) do
+    def init(peer, client, args) do
       args = Enum.into(args, %{})
 
-      %__MODULE__{client: client}
+      %__MODULE__{peer: peer, client: client}
       |> init_state(args)
-      |> when_valid?(&cast_peer(&1, args))
-      |> when_valid?(&cast_socket_init/1)
+      |> when_valid?(&fill_retransmit_timeout/1)
+      |> when_valid?(&validate_ack_random_factor/1)
     end
 
     @doc false
@@ -187,8 +186,7 @@ defmodule CoAP.Transport do
           :ack_random_factor,
           :max_retransmit,
           :socket_opts,
-          :socket_adapter,
-          :peer
+          :socket_adapter
         ])
 
       s
@@ -196,31 +194,6 @@ defmodule CoAP.Transport do
         _key, v1, nil -> v1
         _key, _v1, v2 -> v2
       end)
-      |> fill_retransmit_timeout()
-      |> validate_ack_random_factor()
-    end
-
-    defp cast_peer(s, %{peer: {{a, b, c, d}, port}}) do
-      uri = %URI{scheme: "coap", host: "#{a}.#{b}.#{c}.#{d}", port: port}
-      %{s | peer: uri}
-    end
-
-    defp cast_peer(s, %{peer: {host, port}}) do
-      uri = %URI{scheme: "coap", host: "#{host}", port: port}
-      %{s | peer: uri}
-    end
-
-    defp cast_peer(s, _args),
-      do: s
-
-    defp cast_socket_init(%{socket_adapter: adapter} = s) when not is_nil(adapter),
-      do: s
-
-    defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
-      do: %{s | socket_adapter: CoAP.Transport.UDP}
-
-    defp cast_socket_init(s) do
-      %{s | error: {:badarg, "Missing :peer or :socket_adapter"}}
     end
 
     defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
@@ -255,27 +228,27 @@ defmodule CoAP.Transport do
   end
 
   # Socket implementation is not linked to transport process, but monitored
-  @callback start({peer(), transport(), socket_opts()}) :: GenServer.on_start()
+  @callback start(peer(), transport(), socket_opts()) :: GenServer.on_start()
 
   @doc false
-  @spec start_link(client(), args()) :: GenStateMachine.on_start()
-  def start_link(client, args) do
-    GenStateMachine.start_link(__MODULE__, {client, args})
+  @spec start_link(peer(), client(), args()) :: GenStateMachine.on_start()
+  def start_link(peer, client, args) do
+    GenStateMachine.start_link(__MODULE__, {peer, client, args})
   end
 
   @doc false
-  @spec start(client(), args()) :: GenStateMachine.on_start()
-  def start(client, args) do
-    GenStateMachine.start(__MODULE__, {client, args})
+  @spec start(peer(), client(), args()) :: GenStateMachine.on_start()
+  def start(peer, client, args) do
+    GenStateMachine.start(__MODULE__, {peer, client, args})
   end
 
   @doc false
   def stop(pid, reason \\ :normal), do: GenStateMachine.stop(pid, reason)
 
   @impl GenStateMachine
-  def init({client, args}) do
-    client
-    |> State.init(args)
+  def init({peer, client, args}) do
+    peer
+    |> State.init(client, args)
     |> State.when_valid?(&open_socket/1)
     |> case do
       %State{error: nil} = s -> {:ok, :closed, s}
@@ -466,8 +439,8 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp open_socket(%{socket_adapter: adapter, peer: uri, socket_opts: opts} = s) do
-    case apply(adapter, :start, [{uri, self(), opts}]) do
+  defp open_socket(%{socket_adapter: adapter, peer: peer, socket_opts: opts} = s) do
+    case apply(adapter, :start, [peer, self(), opts]) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
         %{s | socket: pid, socket_ref: ref}

@@ -11,34 +11,29 @@ defmodule CoAP.Transport.UDP do
 
   @behaviour Transport
 
-  defstruct socket: nil, host: nil, port: nil, transport: nil
+  defstruct socket: nil, peer_ip: nil, peer: nil, transport: nil
 
   # No activity timeout: 5 minutes
   @timeout 5 * 60 * 1000
 
   @doc false
   @impl Transport
-  def start({%URI{host: host, port: port}, transport, _opts}) do
-    with {:ok, host_ip} <- resolve_ip(host),
-         {:ok, pid} <-
-           GenServer.start(__MODULE__, {host_ip, port, transport},
-             name: {:global, {__MODULE__, host_ip, port}}
-           ) do
-      {:ok, pid}
-    else
+  def start(peer, transport, opts) do
+    case GenServer.start(__MODULE__, {peer, transport, opts}, name: {:global, {__MODULE__, peer}}) do
+      {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
       {:error, reason} -> {:error, reason}
     end
   end
 
   @impl GenServer
-  def init({host_ip, port, transport}) do
-    # Open UDP socket for sending request, as 'client'
-    case :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}]) do
-      {:ok, socket} ->
-        {:ok, %__MODULE__{socket: socket, host: host_ip, port: port, transport: transport},
-         @timeout}
-
+  def init({{host, _port} = peer, transport, _opts}) do
+    with {:ok, host_ip} <- resolve_ip(host),
+         # Open UDP socket for sending request, as 'client'
+         {:ok, socket} <- :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}]) do
+      {:ok, %__MODULE__{socket: socket, peer_ip: host_ip, peer: peer, transport: transport},
+       @timeout}
+    else
       {:error, reason} ->
         {:error, reason}
     end
@@ -51,9 +46,12 @@ defmodule CoAP.Transport.UDP do
     {:noreply, s, @timeout}
   end
 
-  def handle_info({:udp, _socket, peer_ip, peer_port, data}, s) do
+  def handle_info(
+        {:udp, _socket, peer_ip, peer_port, data},
+        %{peer_ip: peer_ip, peer: {_peer_host, peer_port} = peer} = s
+      ) do
     message = Message.decode(data)
-    send(s.transport, {:recv, message, {peer_ip, peer_port}})
+    send(s.transport, {:recv, message, peer})
     {:noreply, s, @timeout}
   end
 

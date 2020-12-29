@@ -57,6 +57,12 @@ defmodule CoAP.Client.Request do
     end
   end
 
+  @doc """
+  Returns peer out of URI
+  """
+  @spec peer(URI.t()) :: {binary(), integer()}
+  def peer(%URI{host: host, port: port}), do: {host, port}
+
   ###
   ### Priv
   ###

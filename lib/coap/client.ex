@@ -115,34 +115,36 @@ defmodule CoAP.Client do
   ###
   defp do_request(uri, message, options) do
     {message_opts, rr_opts} = Keyword.split(options, @message_opts)
-    {:ok, transport} = Transport.start_link(self(), [{:peer, uri} | message_opts])
+
+    peer = Request.peer(uri)
+    {:ok, transport} = Transport.start_link(peer, self(), message_opts)
 
     try do
       send(transport, message)
       timeout = Keyword.get(rr_opts, :timeout, @default_timeout)
       %Message{token: token, message_id: mid} = message
       start_time = System.monotonic_time(:millisecond)
-      waiting(transport, mid, token, start_time, timeout)
+      waiting(transport, peer, mid, token, start_time, timeout)
     after
       _ = Transport.stop(transport)
     end
   end
 
-  defp waiting(transport, mid, token, start_time, timeout) do
+  defp waiting(transport, peer, mid, token, start_time, timeout) do
     receive do
       {:rr_fail, ^mid, reason} ->
         {:error, reason}
 
-      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token, payload: <<>>}, _peer} ->
+      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token, payload: <<>>}, ^peer} ->
         # Separate response
         timeout = max(0, timeout - (System.monotonic_time(:millisecond) - start_time))
-        waiting_separate(transport, token, timeout)
+        waiting_separate(transport, peer, token, timeout)
 
-      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token} = m, _peer} ->
+      {:rr_rx, %Message{type: :ack, message_id: ^mid, token: ^token} = m, ^peer} ->
         # Piggybacked response
         m
 
-      {:rr_rx, %Message{type: :non, token: ^token} = m, _peer} ->
+      {:rr_rx, %Message{type: :non, token: ^token} = m, ^peer} ->
         # Non confirmable response
         m
     after
@@ -151,12 +153,12 @@ defmodule CoAP.Client do
     end
   end
 
-  defp waiting_separate(transport, token, timeout) do
+  defp waiting_separate(transport, peer, token, timeout) do
     receive do
-      {:rr_rx, %Message{type: :non, token: ^token} = m, _peer} ->
+      {:rr_rx, %Message{type: :non, token: ^token} = m, ^peer} ->
         m
 
-      {:rr_rx, %Message{type: :con, token: ^token} = m, _peer} ->
+      {:rr_rx, %Message{type: :con, token: ^token} = m, ^peer} ->
         send(transport, Message.response_for(m))
         m
     after

@@ -7,8 +7,8 @@ defmodule CoAP.Test.Support.Socket do
   @behaviour CoAP.Transport
 
   @impl Transport
-  def start(args),
-    do: GenServer.start(__MODULE__, args)
+  def start(peer, transport, opts),
+    do: GenServer.start(__MODULE__, {peer, transport, opts})
 
   @impl GenServer
   def init({_peer, _t, test_pid}) do
