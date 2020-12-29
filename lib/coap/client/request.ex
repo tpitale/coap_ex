@@ -62,5 +62,14 @@ defmodule CoAP.Client.Request do
     end
   end
 
+  defp uri_options({:path, path}, opts) do
+    path
+    |> String.split("/", trim: true)
+    |> case do
+      [] -> opts
+      fragments -> Map.put(opts, :uri_path, fragments)
+    end
+  end
+
   defp uri_options(_, opts), do: opts
 end

@@ -2,7 +2,8 @@ defmodule CoAP.Client.RequestTest do
   use ExUnit.Case
   doctest CoAP.Message
 
-  # import ExUnitProperties
+  import ExUnitProperties
+  import StreamData
 
   alias CoAP.Client.Request
   # alias CoAP.Message
@@ -47,6 +48,28 @@ defmodule CoAP.Client.RequestTest do
     test "user provided" do
       {:ok, {_uri, m}} = Request.build(:get, {"coap://example.org:8080/resource", uri_port: 8181})
       assert %{uri_port: 8181} = m.options
+    end
+  end
+
+  describe "uri-path option" do
+    property "non-empty path" do
+      check all(
+        fragments <- list_of(string(:alphanumeric, min_length: 1, max_length: 255), min_length: 1, max_length: 255)
+      ) do
+        path = Enum.join(fragments, "/")
+        {:ok, {_uri, m}} = Request.build(:get, "coap://example.org:8080/#{path}")
+        assert %{uri_path: ^fragments} = m.options
+      end
+    end
+
+    test "empty path" do
+      {:ok, {_uri, m}} = Request.build(:get, "coap://example.org:8080/")
+      refute Map.has_key?(m.options, :uri_path)
+    end
+
+    test "trimmed empty path" do
+      {:ok, {_uri, m}} = Request.build(:get, "coap://example.org:8080///")
+      refute Map.has_key?(m.options, :uri_path)
     end
   end
 end
