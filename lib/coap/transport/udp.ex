@@ -40,9 +40,9 @@ defmodule CoAP.Transport.UDP do
   end
 
   @impl GenServer
-  def handle_info({:send, message}, s) do
+  def handle_info({:send, message}, %{peer_ip: peer_ip, peer: {_, port}} = s) do
     data = Message.encode(message)
-    :ok = :gen_udp.send(s.socket, s.host, s.port, data)
+    :ok = :gen_udp.send(s.socket, peer_ip, port, data)
     {:noreply, s, @timeout}
   end
 
