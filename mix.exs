@@ -1,15 +1,18 @@
 defmodule Coap.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+
   def project do
     [
       app: :coap_ex,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       dialyzer: dialyzer(),
-      elixirc_paths: elixirc_paths(Mix.env())
+      elixirc_paths: elixirc_paths(Mix.env()),
+      docs: docs()
     ]
   end
 
@@ -48,4 +51,20 @@ defmodule Coap.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp docs do
+    [
+      extras: [
+        "README.md"
+      ],
+      main: "readme",
+      groups_for_modules: groups_for_modules(),
+      source_ref: "v#{@version}",
+      source_url: "https://github.com/tpitale/coap_ex"
+    ]
+  end
+
+  defp groups_for_modules do
+    []
+  end
 end

@@ -60,6 +60,7 @@ defmodule CoAP.Message do
   }
   @methods_map Enum.into(@methods, %{}, fn {k, v} -> {v, k} end)
 
+  @type id :: integer()
   @type request_method :: :get | :post | :put | :delete
   @type status_code :: {integer, integer}
   @type status_t :: nil | {atom, atom}
@@ -74,7 +75,7 @@ defmodule CoAP.Message do
           code_detail: integer,
           method: request_method | nil | {integer, integer},
           status: status_t,
-          message_id: integer,
+          message_id: id,
           token: binary,
           options: map,
           multipart: CoAP.Multipart.t() | nil,
@@ -162,14 +163,6 @@ defmodule CoAP.Message do
       payload::binary
     >>
   end
-
-  # Encode a request type (con/non/ack/reset) for binary message use
-  @spec encode_type(request_type()) :: integer
-  defp encode_type(type) when is_atom(type), do: @types_map[type]
-
-  # Decode a binary message into its request type (con/non/ack/reset)
-  @spec decode_type(integer) :: request_type()
-  defp decode_type(type) when is_integer(type), do: @types[type]
 
   @doc """
   Decode binary coap message into a struct
@@ -293,7 +286,7 @@ defmodule CoAP.Message do
       {2, 31}
 
   """
-  @spec encode_method(request_method() | status_t()) :: {integer, integer}
+  @spec encode_method(request_method() | status_t()) :: {integer, integer} | nil
   def encode_method(method), do: @methods_map[method]
 
   @doc """
@@ -322,21 +315,6 @@ defmodule CoAP.Message do
   def multipart(request, options) do
     Multipart.build(request, options[:block1], options[:block2])
   end
-
-  @spec request?(any) :: boolean
-  defp request?(0), do: true
-
-  defp request?(_), do: false
-
-  @spec method_for(any, any) :: request_method() | nil
-  defp method_for(0, code_detail), do: @methods[{0, code_detail}]
-
-  defp method_for(_code_class, _code_detail), do: nil
-
-  @spec status_for(integer, any) :: nil | status_t
-  defp status_for(0, _code_detail), do: nil
-
-  defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
 
   @doc """
   Update a Message with the next_message_id
@@ -436,4 +414,30 @@ defmodule CoAP.Message do
   def response_for(method, payload, message) do
     %__MODULE__{response_for(message) | method: method, payload: payload}
   end
+
+  ###
+  ### Priv
+  ###
+  # Encode a request type (con/non/ack/reset) for binary message use
+  @spec encode_type(request_type()) :: integer
+  defp encode_type(type) when is_atom(type), do: @types_map[type]
+
+  # Decode a binary message into its request type (con/non/ack/reset)
+  @spec decode_type(integer) :: request_type()
+  defp decode_type(type) when is_integer(type), do: @types[type]
+
+  @spec request?(any) :: boolean
+  defp request?(0), do: true
+
+  defp request?(_), do: false
+
+  @spec method_for(any, any) :: request_method() | nil
+  defp method_for(0, code_detail), do: @methods[{0, code_detail}]
+
+  defp method_for(_code_class, _code_detail), do: nil
+
+  @spec status_for(integer, any) :: nil | status_t
+  defp status_for(0, _code_detail), do: nil
+
+  defp status_for(code_class, code_detail), do: @methods[{code_class, code_detail}]
 end

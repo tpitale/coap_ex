@@ -74,6 +74,11 @@ Simple client usage:
 CoAP.Client.get("coap://localhost:5683/api/healthcheck")
 ```
 
+## Options
+
+Client behaviour can be customized through options. See `CoAP.Client`
+documentation for possible options.
+
 # Telemetry #
 
 Coap_ex emits telemetry events for data sent and received, block transfers, and other connection-releated events.  To consume them, attach a handler in your app startup like so:
@@ -102,11 +107,9 @@ To tag a client connection, pass a tag in the request options:
 
 ```
 CoAP.Client.request(
-  :con,
   method,
-  url,
-  request_payload,
-  %{retries: retries, timeout: @wait_timeout, ack_timeout: timeout, tag: tag}
+  {url, [], payload},
+  %{max_retransmit: retries, timeout: @wait_timeout, tag: tag}
 )
  ```
  

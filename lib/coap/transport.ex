@@ -1,6 +1,13 @@
 defmodule CoAP.Transport do
   @moduledoc """
-  Implements CoAP message layer
+  Implements CoAP Message layer.
+
+  CoAP has been designed for using datagram-oriented, unreliable transport, like
+  UDP. A lightweight reliability layer is described in CoAP specification and
+  called "Message layer".
+
+  This module implements the "Message layer" FSM and delegates socket
+  communication to separate modules.
 
   # Message layer FSM
 
@@ -38,33 +45,66 @@ defmodule CoAP.Transport do
   *4: RX_RST / REMOVE_OBSERVER
   *5: RX_ACK
   ```
+
+  # Protocol stack integration
+
+  CoAP Message layer communicates with:
+  * lower socket layer, like UDP, DTLS or even a reliable one like websocket;
+  * higher request/response layer, as client or server.
+
+  ## Message <-> socket communication
+
+  * To socket:
+    * `TX(ack)`: `{:send, %Message{type: :ack}}`
+    * `TX(con)`: `{:send, %Message{type: :con}}`
+    * `TX(non)`: `{:send, %Message{type: :non}}`
+  * From socket:
+    * `RX_RST`: `{:recv, %Message{type: :reset}, peer()}`
+    * `RX_ACK`: `{:recv, %Message{type: :ack}, peer()}`
+    * `RX_NON`: `{:recv, %Message{type: :non}, peer()}`
+    * `RX_CON`: `{:recv, %Message{type: :con}, peer()}`
+
+  ## Message <> Request/Response communication
+
+  * to RR
+    * `RR_EVT(fail)`: `{:rr_fail, Message.id(), reason}`
+    * `RR_EVT(rx)`: `{:rr_rx, Message.t(), peer()}`
+
+  * from RR
+    * `M_CMD(cancel)`: `{:cancel, Message.id()}`
+    * `M_CMD(reliable_send)`: `%Message{type: :con}`
+    * `M_CMD(unreliable_send)`: `%Message{type: :non}`
+    * `M_CMD(accept)`: `%Message{type: :ack}`
+
+
   """
   use GenStateMachine
 
   alias CoAP.Message
 
   @type client() :: pid() | term()
-  @type peer() :: URI.t()
+  @type peer() :: {binary(), :inet.port_number()}
   @type transport() :: pid()
-  @type transport_opts() :: any()
-  @type socket_init() ::
-          ({peer(), transport(), transport_opts()} -> {:ok, pid()} | {:error, term()})
+  @type socket_opts() :: any()
+  @type socket_adapter() :: module()
   @type host :: String.Chars.t() | :inet.ip_address()
   @type arg() ::
-          {:peer, {host(), integer()}}
-          | {:transport_opts, any()}
-          | {:max_retransmit, integer()}
+          {:max_retransmit, integer()}
           | {:ack_timeout, integer()}
           | {:ack_random_factor, integer() | float()}
-          | {:socket_init, socket_init()}
+          | {:socket_adapter, module()}
+          | {:socket_opts, any()}
+          | term()
   @type args() :: arg()
 
+  @type rr_fail_reason :: :reset | :timeout
+
   @typedoc """
-  * `:rr_cancel`: transport received a cancel event
-  * `:rr_fail`: transport failed, due to reset or timeout
-  * `:rr_rx`: transport received an ACK
+  * `{:rr_fail, Message.id(), rr_fail_reason()}`: transport failed, due to reset or timeout
+  * `{:rr_rx, Message.t()}`: transport received a message
   """
-  @type rr_message_content :: :rr_cancel | :rr_fail | {:rr_rx, Message.t()}
+  @type rr_message_content ::
+          {:rr_fail, Message.id(), rr_fail_reason()} | {:rr_rx, Message.t(), peer()}
 
   @typedoc """
   Messages to Request/Receive layer
@@ -74,7 +114,7 @@ defmodule CoAP.Transport do
   @typedoc """
   Messages from Socket to Transport layer
   """
-  @type socket_message :: {:recv, Message.t(), {:inet.ip_address(), :inet.port_number()}}
+  @type socket_message :: {:recv, Message.t(), peer()} | {:send, Message.t()}
 
   defmodule State do
     @moduledoc false
@@ -87,40 +127,40 @@ defmodule CoAP.Transport do
     defstruct client: nil,
               socket: nil,
               socket_ref: nil,
-              socket_init: nil,
+              socket_adapter: CoAP.Transport.UDP,
               peer: nil,
               retries: 0,
               max_retransmit: @max_retransmit,
               retransmit_timeout: 0,
               ack_timeout: @ack_timeout,
               ack_random_factor: @ack_random_factor,
-              transport_opts: nil,
+              socket_opts: nil,
               error: nil
 
     @type t :: %__MODULE__{
             client: Transport.client() | nil,
             socket: pid() | nil,
             socket_ref: reference() | nil,
-            socket_init: Transport.socket_init() | nil,
-            peer: %URI{} | nil,
+            socket_adapter: module() | nil,
+            peer: Transport.peer() | nil,
             retries: integer(),
             max_retransmit: integer(),
             retransmit_timeout: integer(),
             ack_timeout: integer(),
             ack_random_factor: integer() | float(),
-            transport_opts: any(),
+            socket_opts: any(),
             error: term() | nil
           }
 
     @doc false
     # Initialize state with given arguments
-    def init(client, args) do
+    def init(peer, client, args) do
       args = Enum.into(args, %{})
 
-      %__MODULE__{client: client}
+      %__MODULE__{peer: peer, client: client}
       |> init_state(args)
-      |> when_valid?(&cast_peer(&1, args))
-      |> when_valid?(&cast_socket_init/1)
+      |> when_valid?(&fill_retransmit_timeout/1)
+      |> when_valid?(&validate_ack_random_factor/1)
     end
 
     @doc false
@@ -145,8 +185,8 @@ defmodule CoAP.Transport do
           :ack_timeout,
           :ack_random_factor,
           :max_retransmit,
-          :transport_opts,
-          :socket_init
+          :socket_opts,
+          :socket_adapter
         ])
 
       s
@@ -154,31 +194,6 @@ defmodule CoAP.Transport do
         _key, v1, nil -> v1
         _key, _v1, v2 -> v2
       end)
-      |> fill_retransmit_timeout()
-      |> validate_ack_random_factor()
-    end
-
-    defp cast_peer(s, %{peer: {{a, b, c, d}, port}}) do
-      uri = %URI{scheme: "coap", host: "#{a}.#{b}.#{c}.#{d}", port: port}
-      %{s | peer: uri}
-    end
-
-    defp cast_peer(s, %{peer: {host, port}}) do
-      uri = %URI{scheme: "coap", host: "#{host}", port: port}
-      %{s | peer: uri}
-    end
-
-    defp cast_peer(s, _args),
-      do: s
-
-    defp cast_socket_init(%{peer: %URI{scheme: "coap"}} = s),
-      do: %{s | socket_init: &CoAP.Transport.UDP.start/1}
-
-    defp cast_socket_init(%{socket_init: init} = s) when is_function(init, 1),
-      do: s
-
-    defp cast_socket_init(s) do
-      %{s | error: {:badarg, "Missing :peer or :socket_init"}}
     end
 
     defp validate_ack_random_factor(%{ack_random_factor: factor} = s)
@@ -213,27 +228,27 @@ defmodule CoAP.Transport do
   end
 
   # Socket implementation is not linked to transport process, but monitored
-  @callback start({peer(), transport(), transport_opts()}) :: GenServer.on_start()
+  @callback start(peer(), transport(), socket_opts()) :: GenServer.on_start()
 
   @doc false
-  @spec start_link(client(), args()) :: GenStateMachine.on_start()
-  def start_link(client, args) do
-    GenStateMachine.start_link(__MODULE__, {client, args})
+  @spec start_link(peer(), client(), args()) :: GenStateMachine.on_start()
+  def start_link(peer, client, args) do
+    GenStateMachine.start_link(__MODULE__, {peer, client, args})
   end
 
   @doc false
-  @spec start(client(), args()) :: GenStateMachine.on_start()
-  def start(client, args) do
-    GenStateMachine.start(__MODULE__, {client, args})
+  @spec start(peer(), client(), args()) :: GenStateMachine.on_start()
+  def start(peer, client, args) do
+    GenStateMachine.start(__MODULE__, {peer, client, args})
   end
 
   @doc false
   def stop(pid, reason \\ :normal), do: GenStateMachine.stop(pid, reason)
 
   @impl GenStateMachine
-  def init({client, args}) do
-    client
-    |> State.init(args)
+  def init({peer, client, args}) do
+    peer
+    |> State.init(client, args)
     |> State.when_valid?(&open_socket/1)
     |> case do
       %State{error: nil} = s -> {:ok, :closed, s}
@@ -288,16 +303,16 @@ defmodule CoAP.Transport do
   end
 
   # RX_CON
-  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :con, message_id: mid} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     # No timeout, but RR layer should take care of ack'ing message in a
     # reasonble time
     {:next_state, {:ack_pending, mid}, s}
   end
 
   # RX_NON
-  def handle_event(:info, {:recv, %Message{type: :non} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :non} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     :keep_state_and_data
   end
 
@@ -306,8 +321,8 @@ defmodule CoAP.Transport do
     do: :keep_state_and_data
 
   # RX_RST
-  def handle_event(:info, {:recv, %Message{type: :reset} = m, _from}, :closed, s) do
-    request_response_event(s, {:rr_rx, m})
+  def handle_event(:info, {:recv, %Message{type: :reset} = m, from}, :closed, s) do
+    request_response_event(s, {:rr_rx, m, from})
     :keep_state_and_data
   end
 
@@ -316,7 +331,7 @@ defmodule CoAP.Transport do
   #
 
   # M_CMD[cancel]
-  def handle_event(:info, :cancel, {:reliable_tx, _}, s),
+  def handle_event(:info, {:cancel, mid}, {:reliable_tx, mid}, s),
     do: {:next_state, :closed, s}
 
   # M_CMD[reliable_send] - non matching
@@ -324,25 +339,14 @@ defmodule CoAP.Transport do
     {:keep_state_and_data, :postpone}
   end
 
-  # RX_RST
-  def handle_event(
-        :info,
-        {:recv, %Message{type: :reset, message_id: mid}},
-        {:reliable_tx, mid},
-        s
-      ) do
-    request_response_event(s, :rr_fail)
-    {:next_state, :closed, s}
-  end
-
   # RX_ACK
   def handle_event(
         :info,
-        {:recv, %Message{type: :ack, message_id: mid} = m, _from},
+        {:recv, %Message{type: :ack, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, :closed, s}
   end
 
@@ -353,29 +357,29 @@ defmodule CoAP.Transport do
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, :rr_fail)
+    request_response_event(s, {:rr_fail, mid, :reset})
     {:next_state, :closed, s}
   end
 
   # RX_NON
   def handle_event(
         :info,
-        {:recv, %Message{type: :non, message_id: mid} = m, _from},
+        {:recv, %Message{type: :non, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, :closed, s}
   end
 
   # RX_CON
   def handle_event(
         :info,
-        {:recv, %Message{type: :con, message_id: mid} = m, _from},
+        {:recv, %Message{type: :con, message_id: mid} = m, from},
         {:reliable_tx, mid},
         s
       ) do
-    request_response_event(s, {:rr_rx, m})
+    request_response_event(s, {:rr_rx, m, from})
     {:next_state, {:ack_pending, mid}, s}
   end
 
@@ -394,7 +398,7 @@ defmodule CoAP.Transport do
           max_retransmit: max_retransmit
         } = s
       ) do
-    request_response_event(s, :rr_fail)
+    request_response_event(s, {:rr_fail, mid, :timeout})
     {:next_state, :closed, s}
   end
 
@@ -435,8 +439,8 @@ defmodule CoAP.Transport do
   ###
   ### Priv
   ###
-  defp open_socket(%{socket_init: init, peer: uri, transport_opts: opts} = s) do
-    case init.({uri, self(), opts}) do
+  defp open_socket(%{socket_adapter: adapter, peer: peer, socket_opts: opts} = s) do
+    case apply(adapter, :start, [peer, self(), opts]) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
         %{s | socket: pid, socket_ref: ref}
@@ -451,6 +455,6 @@ defmodule CoAP.Transport do
   end
 
   defp request_response_event(%State{client: client}, evt) do
-    send(client, {self(), evt})
+    send(client, evt)
   end
 end
