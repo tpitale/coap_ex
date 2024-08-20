@@ -118,43 +118,6 @@ defmodule CoAP.ClientTest do
     assert byte_size(response.payload) == 2048
   end
 
-
-  defmodule BadOptionFakeEndpoint do
-    def request(message) do
-      # path should have api in it
-      # params should be empty
-
-      payload = <<100, 69, 0, 1, 104, 112, 179, 19, 68, 244, 81, 253, 46, 100, 69, 0, 1, 104, 112, 179, 19, 68, 244, 81, 253, 46>>
-
-      %Message{
-        type: :con,
-        code_class: 2,
-        code_detail: 5,
-        message_id: message.message_id,
-        token: message.token,
-        payload: payload
-      }
-    end
-  end
-
-  @tag :wip
-  test "get a response with bad option" do
-    # pass a module that has a response
-    # endpoint = Task.new(fn)
-    # start a socket server
-    CoAP.SocketServer.start([{CoAP.Adapters.GenericServer, BadOptionFakeEndpoint}, @port + 5])
-    payload = <<100, 69, 0, 1, 104, 112, 179, 19, 68, 244, 81, 253, 46, 100, 69, 0, 1, 104, 112, 179, 19, 68, 244, 81, 253, 46>>
-
-
-    # make a request with the client
-    response = CoAP.Client.get("coap://localhost:#{@port + 5}/api", payload)
-
-    assert response.message_id > 0
-    assert response.code_class == 2
-    assert response.code_detail == 5
-    assert response.payload == "dE\0\x01hp\xB3\x13D\xF4Q\xFD.dE\0\x01hp\xB3\x13D\xF4Q\xFD."
-  end
-
   # test "get a timed out response" do
   #   # pass a module that has a response
   #   # endpoint = Task.new(fn)

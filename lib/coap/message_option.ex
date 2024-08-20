@@ -73,7 +73,6 @@ defmodule CoAP.MessageOption do
     use CoAP.MessageOption.UnsignedOptions
 
     def to_tuple(option_id, value) do
-      IO.inspect({option_id, value}, label: "Option")
       decode_option(option_id, value)
     end
 

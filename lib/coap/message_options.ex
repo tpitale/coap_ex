@@ -1,8 +1,6 @@
 defmodule CoAP.MessageOptions do
   # @payload_marker 0xFF
 
-  require Logger
-
   @doc """
 
   Examples
@@ -55,26 +53,10 @@ defmodule CoAP.MessageOptions do
       # key becomes the next delta_sum
       case tail do
         <<value::binary-size(length), rest::binary>> ->
-          option_list =
-            case CoAP.MessageOption.decode(key, value) do
-              {nil, _} = option ->
-                throw({:error, {:invalid_option, option}})
-                # IO.inspect(option, label: "Invalid option")
-                # option_list
-
-              option ->
-                append_option(option, option_list)
-            end
-
-          decode(rest, key, option_list)
+          decode(rest, key, append_option(CoAP.MessageOption.decode(key, value), option_list))
 
         <<>> ->
-          option = CoAP.MessageOption.decode(key, <<>>)
-          option_list = append_option(option, option_list)
-          decode(<<>>, key, option_list)
-
-        <<rest::binary>> ->
-          decode(rest, key, option_list)
+          decode(<<>>, key, append_option(CoAP.MessageOption.decode(key, <<>>), option_list))
       end
     end
 
@@ -119,7 +101,7 @@ defmodule CoAP.MessageOptions do
           [{key, values ++ [value]} | options]
 
         false ->
-          throw({:error, {:key_not_repeatable, key}})
+          throw({:error, "#{key} is not repeatable"})
       end
     end
 

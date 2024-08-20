@@ -58,6 +58,10 @@ defmodule CoAP.Block do
   def decode(<<number::size(28), more::size(1), size_exponent::size(3)>>),
     do: decode(number, more, size_exponent)
 
+  def decode(number) do
+    decode(number, 0, 0)
+  end
+
   @spec decode(integer, 0 | 1, integer) :: t()
   def decode(number, more, size_exponent) do
     %__MODULE__{

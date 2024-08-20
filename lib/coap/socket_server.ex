@@ -55,6 +55,7 @@ defmodule CoAP.SocketServer do
   def init([endpoint, port]), do: init([endpoint, port, []])
 
   def init([endpoint, {host, port, token}, connection]) do
+    Process.flag(:trap_exit, true)
     {:ok, socket} = :gen_udp.open(0, [:binary, {:active, true}, {:reuseaddr, true}])
 
     ip = normalize_host(host)
@@ -74,6 +75,7 @@ defmodule CoAP.SocketServer do
   end
 
   def init([endpoint, port, config]) do
+    Process.flag(:trap_exit, true)
     {:ok, socket} = :gen_udp.open(port, [:binary, {:active, true}, {:reuseaddr, true}])
 
     {:ok,
@@ -91,30 +93,33 @@ defmodule CoAP.SocketServer do
   def handle_info({:udp, _socket, peer_ip, peer_port, data}, state) do
     debug("CoAP socket received raw data #{to_hex(data)} from #{inspect({peer_ip, peer_port})}")
 
-    message = Message.decode(data)
+    # If we can't decode the message, we can't lookup the connection to return an error
+    case decode_message(data) do
+      {:ok, message} ->
+        {connection, new_state} =
+          connection_for(message.request, {peer_ip, peer_port, message.token}, state)
 
-    {connection, new_state} =
-      connection_for(message.request, {peer_ip, peer_port, message.token}, state)
+        case connection do
+          nil ->
+            warn(
+              "CoAP socket received message for lost connection from " <>
+                "ip: #{inspect(peer_ip)}, port: #{inspect(peer_port)}.  Message: #{inspect(message)}"
+            )
+            {:stop, :connection_lost, state}
 
-    case connection do
-      nil ->
+          c ->
+            send(c, {:receive, message})
+            {:noreply, new_state}
+          end
+
+      {:error, reason} ->
         warn(
-          "CoAP socket received message for lost connection from " <>
-            "ip: #{inspect(peer_ip)}, port: #{inspect(peer_port)}.  Message: #{inspect(message)}"
+          "CoAP socket failed to decode udp packets because #{inspect(reason)} from " <>
+            "ip: #{inspect(peer_ip)}, port: #{inspect(peer_port)}.  data: #{inspect(data, limit: :infinity, print_limit: :infinity)}"
         )
 
-      c ->
-        send(c, {:receive, message})
+        {:stop, reason, state}
     end
-
-    {:noreply, new_state}
-  catch
-    e ->
-      warn(
-        "CoAP socket failed to decode udp packets because #{inspect e} from " <>
-          "ip: #{inspect(peer_ip)}, port: #{inspect(peer_port)}.  data: #{inspect(data, limit: :infinity, print_limit: :infinity)}"
-      )
-      {:noreply, state}
   end
 
   # Deliver messages to be sent to a peer
@@ -139,6 +144,7 @@ defmodule CoAP.SocketServer do
   # Handles message for completed connection
   # Removes complete connection from the registry and monitoring
   def handle_info({:DOWN, ref, :process, _from, reason}, state) do
+    IO.inspect("CoAP socket received DOWN:#{reason} from #{inspect(ref)}")
     {host, port, _} = Map.get(state.monitors, ref)
 
     :telemetry.execute(
@@ -150,14 +156,17 @@ defmodule CoAP.SocketServer do
     connection_complete(type(state), ref, reason, state)
   end
 
+  def terminate(_reason, state) do
+    :ok = :gen_udp.close(state.socket)
+    :ok
+  end
+
   defp connection_complete(:server, ref, reason, %{monitors: monitors} = state) do
     connection_id = Map.get(monitors, ref)
     connection = Map.get(state[:connections], connection_id)
 
     debug(
-      "CoAP socket SERVER received DOWN:#{reason} in CoAP.SocketServer from:#{
-        inspect(connection_id)
-      }:#{inspect(connection)}:#{inspect(ref)}"
+      "CoAP socket SERVER received DOWN:#{reason} in CoAP.SocketServer from:#{inspect(connection_id)}:#{inspect(connection)}:#{inspect(ref)}"
     )
 
     {:noreply,
@@ -173,9 +182,7 @@ defmodule CoAP.SocketServer do
     connection = Map.get(state[:connections], connection_id)
 
     debug(
-      "CoAP socket CLIENT received DOWN:#{reason} in CoAP.SocketServer from: #{
-        inspect(connection_id)
-      }:#{inspect(connection)}:#{inspect(ref)}"
+      "CoAP socket CLIENT received DOWN:#{reason} in CoAP.SocketServer from: #{inspect(connection_id)}:#{inspect(connection)}:#{inspect(ref)}"
     )
 
     {:stop, :normal, state}
@@ -246,4 +253,14 @@ defmodule CoAP.SocketServer do
 
   defp type(%{port: 0}), do: :client
   defp type(_), do: :server
+
+  defp decode_message(data) do
+    {:ok, Message.decode(data)}
+  rescue
+    e ->
+      {:error, e}
+  catch
+    e ->
+      {:error, e}
+  end
 end
